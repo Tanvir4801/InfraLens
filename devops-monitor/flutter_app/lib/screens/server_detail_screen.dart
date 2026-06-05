@@ -56,7 +56,7 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
             margin: const EdgeInsets.only(right: 16),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: (s.isHealthy ? AppTheme.green : AppTheme.amber).withOpacity(0.12),
+              color: (s.isHealthy ? AppTheme.green : AppTheme.amber).withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
@@ -134,9 +134,9 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                               gridData: FlGridData(
                                 show: true,
                                 getDrawingHorizontalLine: (_) =>
-                                    FlLine(color: AppTheme.border.withOpacity(0.5), strokeWidth: 0.5),
+                                    FlLine(color: AppTheme.border.withValues(alpha: 0.5), strokeWidth: 0.5),
                                 getDrawingVerticalLine: (_) =>
-                                    FlLine(color: AppTheme.border.withOpacity(0.5), strokeWidth: 0.5),
+                                    FlLine(color: AppTheme.border.withValues(alpha: 0.5), strokeWidth: 0.5),
                               ),
                               titlesData: FlTitlesData(
                                 leftTitles: AxisTitles(
@@ -175,7 +175,7 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                               ),
                               borderData: FlBorderData(
                                 show: true,
-                                border: Border.all(color: AppTheme.border.withOpacity(0.5)),
+                                border: Border.all(color: AppTheme.border.withValues(alpha: 0.5)),
                               ),
                               minY: 0,
                               maxY: 100,
@@ -191,7 +191,7 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
                                   dotData: const FlDotData(show: false),
                                   belowBarData: BarAreaData(
                                     show: true,
-                                    color: AppTheme.green.withOpacity(0.1),
+                                    color: AppTheme.green.withValues(alpha: 0.1),
                                   ),
                                 ),
                               ],

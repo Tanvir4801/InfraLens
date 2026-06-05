@@ -27,7 +27,6 @@ class DashboardScreen extends StatelessWidget {
       builder: (_, metrics, alerts, __) {
         final snap       = metrics.snapshot;
         final wsState    = metrics.wsState;
-        final isOffline  = wsState == WsState.disconnected && snap == null;
         final criticals  = alerts.allAlerts.where((a) => a.isCritical).toList();
         final healthScore = metrics.healthScoreWithAlerts(alerts.criticalCount, alerts.warningCount);
 
@@ -162,9 +161,9 @@ class _ConnectionPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -187,9 +186,9 @@ class _OfflineBanner extends StatelessWidget {
     margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
     decoration: BoxDecoration(
-      color: AppTheme.amber.withOpacity(0.1),
+      color: AppTheme.amber.withValues(alpha: 0.1),
       borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: AppTheme.amber.withOpacity(0.3)),
+      border: Border.all(color: AppTheme.amber.withValues(alpha: 0.3)),
     ),
     child: const Row(
       children: [
@@ -210,9 +209,9 @@ class _CriticalBanner extends StatelessWidget {
     margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
     decoration: BoxDecoration(
-      color: AppTheme.red.withOpacity(0.1),
+      color: AppTheme.red.withValues(alpha: 0.1),
       borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: AppTheme.red.withOpacity(0.3)),
+      border: Border.all(color: AppTheme.red.withValues(alpha: 0.3)),
     ),
     child: Row(
       children: [

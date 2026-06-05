@@ -132,7 +132,7 @@ class _AiChatDrawerState extends State<AiChatDrawer> {
                   Container(
                     padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
-                      color: AppTheme.blue.withOpacity(0.15),
+                      color: AppTheme.blue.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Icon(Icons.smart_toy_outlined, color: AppTheme.blue, size: 18),
@@ -247,7 +247,7 @@ class _Bubble extends StatelessWidget {
             Container(
               width: 26, height: 26,
               decoration: BoxDecoration(
-                color: AppTheme.blue.withOpacity(0.15),
+                color: AppTheme.blue.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.smart_toy_outlined, size: 14, color: AppTheme.blue),
@@ -266,7 +266,7 @@ class _Bubble extends StatelessWidget {
                   bottomLeft:  Radius.circular(message.isUser ? 12 : 2),
                   bottomRight: Radius.circular(message.isUser ? 2  : 12),
                 ),
-                border: message.isUser ? null : Border.all(color: AppTheme.blue.withOpacity(0.2)),
+                border: message.isUser ? null : Border.all(color: AppTheme.blue.withValues(alpha: 0.2)),
               ),
               child: SelectableText(
                 message.text,
@@ -322,7 +322,7 @@ class _TypingIndicatorState extends State<_TypingIndicator> with TickerProviderS
       decoration: BoxDecoration(
         color: const Color(0xFF0d1e2e),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.blue.withOpacity(0.2)),
+        border: Border.all(color: AppTheme.blue.withValues(alpha: 0.2)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -332,7 +332,7 @@ class _TypingIndicatorState extends State<_TypingIndicator> with TickerProviderS
             margin: const EdgeInsets.symmetric(horizontal: 2),
             width: 6, height: 6,
             decoration: BoxDecoration(
-              color: AppTheme.blue.withOpacity(_anims[i].value),
+              color: AppTheme.blue.withValues(alpha: _anims[i].value),
               shape: BoxShape.circle,
             ),
           ),

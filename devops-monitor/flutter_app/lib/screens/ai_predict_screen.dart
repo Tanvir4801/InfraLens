@@ -76,7 +76,7 @@ class AiPredictScreen extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: const Color(0xFF0d1e2e),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: AppTheme.blue.withOpacity(0.3)),
+                            border: Border.all(color: AppTheme.blue.withValues(alpha: 0.3)),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -242,7 +242,7 @@ class _ForecastChart extends StatelessWidget {
       LineChartData(
         gridData: FlGridData(
           show: true,
-          getDrawingHorizontalLine: (_) => FlLine(color: AppTheme.border.withOpacity(0.4), strokeWidth: 0.5),
+          getDrawingHorizontalLine: (_) => FlLine(color: AppTheme.border.withValues(alpha: 0.4), strokeWidth: 0.5),
           getDrawingVerticalLine:   (_) => const FlLine(color: Colors.transparent),
         ),
         titlesData: const FlTitlesData(show: false),
@@ -256,7 +256,7 @@ class _ForecastChart extends StatelessWidget {
           horizontalLines: [
             HorizontalLine(
               y: 85,
-              color: AppTheme.red.withOpacity(0.6),
+              color: AppTheme.red.withValues(alpha: 0.6),
               strokeWidth: 1.5,
               dashArray: [4, 3],
             ),
@@ -269,7 +269,7 @@ class _ForecastChart extends StatelessWidget {
             barWidth: 2,
             isCurved: true,
             dotData: const FlDotData(show: false),
-            belowBarData: BarAreaData(show: true, color: AppTheme.green.withOpacity(0.08)),
+            belowBarData: BarAreaData(show: true, color: AppTheme.green.withValues(alpha: 0.08)),
           ),
           if (fSpots.isNotEmpty)
             LineChartBarData(
@@ -279,7 +279,7 @@ class _ForecastChart extends StatelessWidget {
               isCurved: true,
               dashArray: [5, 3],
               dotData: const FlDotData(show: false),
-              belowBarData: BarAreaData(show: true, color: AppTheme.blue.withOpacity(0.06)),
+              belowBarData: BarAreaData(show: true, color: AppTheme.blue.withValues(alpha: 0.06)),
             ),
         ],
       ),

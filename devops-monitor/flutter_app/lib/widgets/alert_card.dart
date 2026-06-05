@@ -44,7 +44,7 @@ class _AlertCardState extends State<AlertCard> {
         alignment: Alignment.centerLeft,
         padding: const EdgeInsets.only(left: 24),
         decoration: BoxDecoration(
-          color: AppTheme.green.withOpacity(0.15),
+          color: AppTheme.green.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
@@ -75,7 +75,7 @@ class _AlertCardState extends State<AlertCard> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: borderColor.withOpacity(0.15),
+                        color: borderColor.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(

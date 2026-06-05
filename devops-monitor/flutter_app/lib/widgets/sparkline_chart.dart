@@ -43,7 +43,7 @@ class SparklineChart extends StatelessWidget {
               dotData: const FlDotData(show: false),
               belowBarData: BarAreaData(
                 show: true,
-                color: color.withOpacity(0.12),
+                color: color.withValues(alpha: 0.12),
               ),
             ),
           ],

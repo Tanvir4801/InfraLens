@@ -123,7 +123,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                     decoration: BoxDecoration(
-                      color: AppTheme.red.withOpacity(0.15),
+                      color: AppTheme.red.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
@@ -212,9 +212,9 @@ class _FilterChip extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
-          color: active ? AppTheme.green.withOpacity(0.12) : AppTheme.bgCardAlt,
+          color: active ? AppTheme.green.withValues(alpha: 0.12) : AppTheme.bgCardAlt,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: active ? AppTheme.green.withOpacity(0.4) : AppTheme.border),
+          border: Border.all(color: active ? AppTheme.green.withValues(alpha: 0.4) : AppTheme.border),
         ),
         child: Row(
           children: [
@@ -231,7 +231,7 @@ class _FilterChip extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                 decoration: BoxDecoration(
-                  color: AppTheme.red.withOpacity(0.2),
+                  color: AppTheme.red.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(

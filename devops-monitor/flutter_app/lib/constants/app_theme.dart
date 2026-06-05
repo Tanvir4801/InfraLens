@@ -25,7 +25,6 @@ class AppTheme {
           primary: green,
           secondary: blue,
           surface: bgCard,
-          background: bgPrimary,
         ),
         cardColor: bgCard,
         dividerColor: border,

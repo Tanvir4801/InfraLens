@@ -147,12 +147,12 @@ class _SortButton extends StatelessWidget {
       onPressed: () => onTap(value),
       style: TextButton.styleFrom(
         foregroundColor: active ? AppTheme.green : AppTheme.textMuted,
-        backgroundColor: active ? AppTheme.green.withOpacity(0.1) : Colors.transparent,
+        backgroundColor: active ? AppTheme.green.withValues(alpha: 0.1) : Colors.transparent,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         minimumSize: const Size(0, 32),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(6),
-          side: BorderSide(color: active ? AppTheme.green.withOpacity(0.3) : AppTheme.border),
+          side: BorderSide(color: active ? AppTheme.green.withValues(alpha: 0.3) : AppTheme.border),
         ),
       ),
       child: Text(label, style: const TextStyle(fontSize: 13)),

@@ -36,8 +36,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd devops-monitor/infralens-web/infralens-web && PORT=5000 BROWSER=none npm start"
-waitForPort = 5000
+args = "cd devops-monitor/infralens-web/infralens-web && PORT=3001 BROWSER=none npm start"
 
 [[workflows.workflow]]
 name = "Backend API"
@@ -57,11 +56,15 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd devops-monitor/flutter_app && python3 -m http.server 3000 --directory build/web"
+args = "cd devops-monitor/flutter_app && python3 -m http.server 5000 --directory build/web"
 
 [[ports]]
 localPort = 3000
 externalPort = 3001
+
+[[ports]]
+localPort = 3001
+externalPort = 3002
 
 [[ports]]
 localPort = 5000

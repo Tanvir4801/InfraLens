@@ -116,7 +116,7 @@ class _AppShellState extends State<AppShell> {
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: AppTheme.green.withOpacity(0.15),
+                          color: AppTheme.green.withValues(alpha: 0.15),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(Icons.monitor_heart_outlined, color: AppTheme.green, size: 28),
