@@ -272,6 +272,56 @@ app.add_middleware(
 )
 
 
+_CHAT_RESPONSES: dict[str, str] = {
+    "cpu": (
+        "Based on current telemetry, CPU usage appears elevated. "
+        "Check running processes with `top` or `htop`, review recent deploys, "
+        "and consider scaling horizontally if load persists above 70%."
+    ),
+    "memory": (
+        "Memory pressure detected. Review heap allocation in your services, "
+        "look for memory leaks with `ps aux --sort=-%mem`, and consider "
+        "increasing swap or upgrading the node."
+    ),
+    "disk": (
+        "Disk usage is climbing. Archive or rotate old logs (`journalctl --vacuum-size=1G`), "
+        "remove unused Docker images (`docker system prune`), "
+        "and set up log rotation to prevent future issues."
+    ),
+    "alert": (
+        "Active alerts require attention. Prioritise critical severity first. "
+        "Use the AI Incident Report feature on each alert for detailed root-cause analysis "
+        "and recommended remediation steps."
+    ),
+    "health": (
+        "Overall system health depends on CPU, RAM, disk utilisation and active alert count. "
+        "Aim to keep all metrics below 70% for a healthy score above 80. "
+        "Reduce alert count to improve the score further."
+    ),
+    "predict": (
+        "The prediction engine uses a Prophet time-series model trained on the last 2 hours "
+        "of CPU data. It forecasts the next 30 minutes in 5-minute steps and flags overload "
+        "risk when predicted CPU exceeds 85%."
+    ),
+}
+
+_DEFAULT_CHAT = (
+    "I'm InfraLens AI, your DevOps assistant. I can help you analyse infrastructure metrics, "
+    "investigate alerts, and predict potential issues. "
+    "Ask me about CPU, memory, disk, alerts, or system health!"
+)
+
+
+@app.get("/api/chat")
+async def api_chat(q: str = "") -> dict[str, str]:
+    request_counter.labels(path="/api/chat", method="GET").inc()
+    q_lower = q.lower()
+    for keyword, response in _CHAT_RESPONSES.items():
+        if keyword in q_lower:
+            return {"answer": response}
+    return {"answer": _DEFAULT_CHAT}
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     request_counter.labels(path="/health", method="GET").inc()

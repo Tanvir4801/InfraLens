@@ -1,0 +1,393 @@
+You are building a production-grade Flutter mobile app called "InfraLens" — an AI-powered DevOps monitoring dashboard. Build the complete app from scratch with the following specifications.
+
+═══════════════════════════════════════
+TECH STACK & DEPENDENCIES (pubspec.yaml)
+═══════════════════════════════════════
+Flutter SDK: >=3.10.0
+Dependencies:
+  fl_chart: ^0.68.0
+  provider: ^6.1.2
+  web_socket_channel: ^2.4.0
+  http: ^1.2.1
+  shared_preferences: ^2.2.3
+  flutter_local_notifications: ^17.2.2
+  lottie: ^3.1.2
+  shimmer: ^3.0.0
+  intl: ^0.19.0
+  timeago: ^3.6.1
+  flutter_dotenv: ^5.1.0
+
+═══════════════════════════════════════
+FOLDER STRUCTURE
+═══════════════════════════════════════
+lib/
+  main.dart
+  app.dart
+  constants/
+    app_theme.dart       ← all colors, textstyles
+    app_constants.dart   ← baseUrl, wsUrl, intervals
+  models/
+    metrics_snapshot.dart
+    server_info.dart
+    alert_model.dart
+    prediction_result.dart
+    incident_report.dart
+  services/
+    api_service.dart
+    websocket_service.dart
+    notification_service.dart
+    local_storage_service.dart
+  providers/
+    metrics_provider.dart
+    servers_provider.dart
+    alerts_provider.dart
+    prediction_provider.dart
+  screens/
+    dashboard_screen.dart
+    servers_screen.dart
+    server_detail_screen.dart
+    alerts_screen.dart
+    ai_predict_screen.dart
+    settings_screen.dart
+  widgets/
+    circular_gauge.dart
+    sparkline_chart.dart
+    server_card.dart
+    alert_card.dart
+    health_score_widget.dart
+    anomaly_timeline.dart
+    ai_chat_drawer.dart
+    shimmer_loader.dart
+    pulse_dot.dart
+  app_shell.dart         ← bottom nav + IndexedStack
+
+═══════════════════════════════════════
+THEME & COLORS (app_theme.dart)
+═══════════════════════════════════════
+static const bgPrimary   = Color(0xFF0d1117);
+static const bgCard      = Color(0xFF161b22);
+static const bgCardAlt   = Color(0xFF1f2937);
+static const border      = Color(0xFF30363d);
+static const textPrimary = Color(0xFFe6edf3);
+static const textMuted   = Color(0xFF8b949e);
+static const textHint    = Color(0xFF484f58);
+static const green       = Color(0xFF1D9E75);
+static const greenLight  = Color(0xFF5DCAA5);
+static const amber       = Color(0xFFEF9F27);
+static const red         = Color(0xFFE24B4A);
+static const blue        = Color(0xFF378ADD);
+static const blueLight   = Color(0xFF85B7EB);
+Color getMetricColor(double pct) =>
+  pct < 60 ? green : pct < 80 ? amber : red;
+
+═══════════════════════════════════════
+SERVICES LAYER
+═══════════════════════════════════════
+
+api_service.dart — singleton with these methods:
+  Future<MetricsSnapshot> fetchMetrics()
+    → GET {baseUrl}/api/metrics
+  Future<List<ServerInfo>> fetchServers()
+    → GET {baseUrl}/api/servers
+  Future<List<AlertModel>> fetchAlerts()
+    → GET {baseUrl}/api/alerts
+  Future<PredictionResult> fetchPrediction()
+    → GET {baseUrl}/api/predict
+  Future<List<Map>> fetchServerHistory(String name)
+    → GET {baseUrl}/api/servers/{name}/history
+  Future<IncidentReport> postIncidentReport(AlertModel alert)
+    → POST {baseUrl}/api/incident-report
+  Future<String> postAiChat(String question)
+    → GET {baseUrl}/api/chat?q={question}
+  Future<void> acknowledgeAlert(String id)
+    → PATCH {baseUrl}/api/alerts/{id}/acknowledge
+All methods: handle timeout (10s), catch SocketException,
+return cached data from LocalStorageService on failure.
+
+websocket_service.dart:
+  Connects to {wsUrl}/ws/live
+  Emits Stream<MetricsSnapshot>
+  Auto-reconnects with exponential backoff:
+    1s → 2s → 4s → 8s → 16s → 30s max
+  Exposes connectionState: Stream<WsState>
+    (WsState: connecting, connected, disconnected)
+
+notification_service.dart:
+  Init flutter_local_notifications on startup
+  showCriticalAlert(AlertModel alert) — fires local
+    notification with alert name + description
+  compareAndNotify(List<AlertModel> newAlerts,
+    List<AlertModel> oldAlerts) — diffs by alert ID,
+    fires notification only for genuinely new criticals
+
+local_storage_service.dart (shared_preferences):
+  saveMetrics(MetricsSnapshot) / loadMetrics()
+  saveAlerts(List<AlertModel>) / loadAlerts()
+  savePinEnabled(bool) / loadPinEnabled()
+  savePin(String) / loadPin()
+
+═══════════════════════════════════════
+PROVIDERS
+═══════════════════════════════════════
+MetricsProvider (ChangeNotifier):
+  - Subscribes to WebSocketService stream
+  - Maintains rollingHistory: List<double> (last 20 cpu values)
+  - Tracks connectionState (WsState)
+  - Computes healthScore (0-100):
+      100 - (cpu*0.4 + ram*0.3 + disk*0.2 + alertPenalty*0.1)
+      where alertPenalty = criticalCount * 15 + warningCount * 5
+
+AlertsProvider (ChangeNotifier):
+  - Fetches every 30s
+  - Calls NotificationService.compareAndNotify on each fetch
+  - Exposes filteredAlerts(String severity)
+  - Tracks acknowledgedIds: Set<String>
+
+ServersProvider / PredictionProvider: similar pattern.
+
+═══════════════════════════════════════
+APP SHELL (app_shell.dart)
+═══════════════════════════════════════
+Scaffold with:
+  body: IndexedStack(index: _tab, children: [
+    DashboardScreen(),
+    ServersScreen(),
+    AlertsScreen(),
+    AiPredictScreen(),
+  ])
+  bottomNavigationBar: BottomNavigationBar(
+    backgroundColor: bgCard,
+    selectedItemColor: green,
+    unselectedItemColor: textMuted,
+    type: BottomNavigationBarType.fixed,
+    items: [
+      home icon → "Dashboard",
+      server icon → "Servers",
+      bell icon → "Alerts" with red Stack badge showing
+        Consumer<AlertsProvider>(criticalCount),
+      sparkles/stars icon → "Predict"
+    ]
+  )
+Badge animates scale(1.2) then back to 1.0 when count changes.
+Use PageController + AnimatedSwitcher with FadeTransition
+between tabs (duration: 180ms).
+
+═══════════════════════════════════════
+SCREEN 1 — DashboardScreen
+═══════════════════════════════════════
+AppBar: "DevOps Monitoring Dashboard" title,
+  trailing: ConnectionStatusPill (green dot "Connected" /
+  pulsing amber "Reconnecting..." / red "Offline")
+
+Body (Consumer<MetricsProvider>):
+
+1. If disconnected: shimmer skeleton over gauges +
+   "Last updated X min ago · Reconnecting…" amber banner
+
+2. Critical alert banner (if any critical exists):
+   AnimatedContainer slides in from top, red bg,
+   alert name text, "View" button → navigates to Alerts tab
+
+3. HealthScore widget:
+   Large animated number (TweenAnimationBuilder, 600ms)
+   Label: ≥80 "Excellent" green, ≥60 "Good" amber,
+          ≥40 "At Risk" orange, <40 "Critical" red
+   Subtitle: "System health score"
+
+4. Row of 3 CircularGauge widgets (CPU / RAM / Disk):
+   Custom widget using fl_chart PieChart (2 sections:
+   value + remainder). Center text: "XX.X%". Below: label.
+   Color from getMetricColor(). Animate on value change.
+
+5. SparklineChart widget:
+   fl_chart LineChart, 20 data points from rollingHistory,
+   green line, subtle area fill, no axes labels,
+   height 80px, updates via Consumer
+
+6. Uptime + last-updated row at bottom of card.
+
+═══════════════════════════════════════
+SCREEN 2 — ServersScreen
+═══════════════════════════════════════
+AppBar: "Servers" + refresh IconButton (spins while loading)
+
+Search bar (TextField, dark styled) filters by server name.
+Sort row: "CPU ↑" "CPU ↓" "Status" TextButtons.
+
+Body (Consumer<ServersProvider>):
+  Loading: ShimmerLoader showing 3 placeholder cards
+  Empty: centered illustration + "No servers found" text
+  Loaded: AnimatedList of ServerCard widgets
+
+ServerCard widget:
+  Row: PulseDot (animated) | server name + IP subtitle |
+       LinearProgressIndicator (cpu%, colored) |
+       cpu% text | chevron_right
+  PulseDot: if server healthy, dot has expanding ripple
+    Container animation (repeat, duration 1.5s, opacity 0→0)
+    If offline: static red dot, no animation
+
+Tapping → Navigator.push(ServerDetailScreen(server))
+
+ServerDetailScreen:
+  AppBar: server name + status pill
+  3 large CircularGauge widgets in a Row
+  Uptime text below gauges
+  "CPU history — last 1 hour" section:
+    fl_chart LineChart with pinch-to-zoom (transformationController),
+    green area chart, timestamp x-axis labels every 10 min
+  Auto-refreshes every 10s while screen is mounted.
+
+═══════════════════════════════════════
+SCREEN 3 — AlertsScreen
+═══════════════════════════════════════
+AppBar: "Alerts" + alert count badge
+
+Filter chip row: All | Critical | Warning
+  Animated refilter using AnimatedList.
+
+Body (Consumer<AlertsProvider>):
+  AnimatedList — new alerts insert at index 0 with
+    SlideTransition from top (duration 300ms)
+
+AlertCard widget (Dismissible + left border):
+  Dismissible(
+    direction: DismissDirection.startToEnd,
+    background: green "Acknowledged" with check icon,
+    onDismissed: alertsProvider.acknowledge(alert.id)
+      → calls ApiService.acknowledgeAlert()
+      → slides out with scale(0) animation
+  )
+  Card content:
+    Left border: 3px red (critical) or amber (warning)
+    Row: severity badge pill | alert name bold | fired time
+    Description text (muted, 2 lines max)
+    "Generate AI Report" TextButton (blue)
+
+"Generate AI Report" flow:
+  1. Button shows CircularProgressIndicator (inline)
+  2. Calls ApiService.postIncidentReport(alert)
+  3. On response: showModalBottomSheet(
+       isScrollControlled: true,
+       backgroundColor: bgCard,
+       shape: RoundedRectangleBorder(top corners 16),
+       child: Column [
+         "AI Incident Report" header + copy IconButton,
+         Divider,
+         Expanded SingleChildScrollView: SelectableText
+           in Container with bgPrimary bg, monospace font,
+           padding 16, text from IncidentReport.reportText
+       ]
+     )
+
+Notification: AlertsProvider calls
+  NotificationService.compareAndNotify on every fetch.
+  New criticals → device notification even if backgrounded.
+
+═══════════════════════════════════════
+SCREEN 4 — AiPredictScreen
+═══════════════════════════════════════
+AppBar: "AI Predict" + model info IconButton (shows dialog
+  with "Prophet model · 2h training window · 5min refresh")
+
+Body (Consumer<PredictionProvider>):
+
+1. Prediction summary card (blue-tinted bg #0d1e2e,
+   border blue):
+   Row: brain icon | "AI Prediction" label | confidence %bar
+   if will_overload:
+     Red warning icon + "Overload predicted"
+     "Predicted max CPU: XX.X%"
+     "Time until overload:" + CountdownTimer widget
+       (counts down from minutes_until_overload * 60 seconds,
+        rebuilds every second using Stream.periodic)
+   else:
+     Green check icon + "System looks stable"
+     "Predicted max CPU: XX.X% (safe)"
+
+2. Forecast chart card:
+   fl_chart LineChart, two LineSeries:
+     - Actual CPU: green solid line, data from rolling history
+     - Forecast: blue dashed line (dashArray: [5,3]),
+       data from PredictionResult.forecast list
+   Red horizontal threshold line at y=85
+   Legend row below: green dot "Actual" | blue dot "Forecast"
+     | red line "Threshold (85%)"
+   Height: 180px
+
+3. Anomaly Event Timeline:
+   Title: "Recent anomalies"
+   Vertical ListView of last 10 anomaly events:
+     Each row: timestamp | metric badge | severity dot |
+     one-line AI summary text
+   Separator: vertical line connecting dots (like a timeline)
+   If empty: "No anomalies detected" with green icon
+
+4. FloatingActionButton (bottom right):
+   Icon: chat bubble / sparkles
+   Label: "Ask AI"
+   Opens AiChatDrawer via showBottomSheet
+
+AiChatDrawer widget:
+  DraggableScrollableSheet (initialSize 0.5, max 0.9)
+  Header: "Ask InfraLens AI"
+  Chat history ListView (messages alternating user/AI bubbles)
+  User bubble: bgCardAlt, right-aligned, textPrimary
+  AI bubble: blue-tinted bg, left-aligned, with small
+    robot icon avatar
+  AI response renders with typewriter effect:
+    Split responseText by characters, use Timer.periodic
+    (30ms) to append chars one by one to displayed string,
+    setState on each tick
+  Bottom: TextField + send IconButton
+  On send: adds user message, calls ApiService.postAiChat(q),
+    shows typing indicator (3 animated dots), then typewriter
+  Typing indicator: Row of 3 Containers, each animating
+    opacity 0.3→1.0 in sequence (staggered 200ms)
+
+═══════════════════════════════════════
+UNIQUE FEATURES SUMMARY
+═══════════════════════════════════════
+1. Health Score (0-100) computed from all metrics + alerts
+2. Offline mode: shimmer + cached data from SharedPreferences
+3. Swipe-to-acknowledge alerts with animation
+4. Push notifications for new critical alerts
+5. AI chat with typewriter streaming effect
+6. Anomaly event timeline with AI summaries
+7. Server pulse dot animation (only on healthy servers)
+8. Countdown timer on predicted overload
+9. PIN lock screen (Settings > enable PIN > 4-digit input)
+10. Pinch-to-zoom on CPU history chart
+
+═══════════════════════════════════════
+SETTINGS SCREEN (bonus)
+═══════════════════════════════════════
+Simple ListView with:
+  - "Backend URL" TextFormField (editable, saves to prefs)
+  - "Refresh interval" DropdownButton (3s/5s/10s)
+  - "Enable PIN lock" SwitchListTile
+    if enabled: shows "Change PIN" → 4-digit input dialog
+  - "Notifications" SwitchListTile
+  - App version footer: "InfraLens v1.0.0 · Built with Flutter"
+
+═══════════════════════════════════════
+REPLIT-SPECIFIC INSTRUCTIONS
+═══════════════════════════════════════
+- Target: Flutter Web (flutter build web) so it runs
+  in Replit's webview without needing a device
+- In AppConstants, default baseUrl = 'http://localhost:8000'
+  but read from .env file using flutter_dotenv if present
+- For Replit preview, also provide a mock_data_service.dart
+  that returns hardcoded realistic mock data for all API
+  calls, so the UI is fully demonstrable without a backend.
+  Add a toggle in Settings: "Use mock data" SwitchListTile.
+- main.dart loads dotenv then runs app:
+    await dotenv.load(fileName: '.env');
+    runApp(MultiProvider(providers: [...], child: App()));
+- Build and run command for Replit: flutter run -d web-server
+  --web-port=3000 --web-hostname=0.0.0.0
+
+Generate ALL files completely. No placeholders, no TODOs.
+Every file should be complete, compilable Flutter/Dart code.
+Start with pubspec.yaml, then main.dart, then work through
+the folder structure top to bottom.

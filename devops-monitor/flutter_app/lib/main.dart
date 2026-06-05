@@ -1,36 +1,21 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'services/local_storage_service.dart';
+import 'app.dart';
 
-import 'dashboard_screen.dart';
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
 
-void main() {
-  runApp(
-    ChangeNotifierProvider(
-      create: (_) => DashboardController()..connect(),
-      child: const DevOpsMonitorApp(),
-    ),
-  );
+  // Load .env (ignore errors — defaults are used if file not found)
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (_) {}
+
+  // Init local storage
+  await LocalStorageService.init();
+
+  // Init notifications
+  await initApp();
+
+  runApp(const InfraLensApp());
 }
-
-class DevOpsMonitorApp extends StatelessWidget {
-  const DevOpsMonitorApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'DevOps Monitor',
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF38BDF8),
-          brightness: Brightness.dark,
-        ),
-        scaffoldBackgroundColor: const Color(0xFF050816),
-        useMaterial3: true,
-      ),
-      home: const DashboardScreen(),
-    );
-  }
-}
-
