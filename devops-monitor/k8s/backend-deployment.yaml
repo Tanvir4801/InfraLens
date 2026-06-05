@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: devops-monitor
+  labels:
+    app: devops-monitor
+    component: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: devops-monitor
+      component: backend
+  template:
+    metadata:
+      labels:
+        app: devops-monitor
+        component: backend
+    spec:
+      containers:
+        - name: backend
+          image: devops-monitor-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          resources:
+            requests:
+              cpu: 5m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 20

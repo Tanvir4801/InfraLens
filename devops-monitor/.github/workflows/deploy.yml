@@ -1,0 +1,109 @@
+name: Deploy DevOps Monitor
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest
+
+      - name: Run backend tests
+        working-directory: backend
+        run: pytest -q
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: stable
+
+      - name: Install Flutter dependencies
+        working-directory: flutter_app
+        run: flutter pub get
+
+      - name: Run Flutter tests
+        working-directory: flutter_app
+        run: flutter test
+
+  build-and-push:
+    name: build-and-push
+    runs-on: ubuntu-latest
+    needs: test
+    outputs:
+      image-tag: ${{ steps.meta.outputs.image-tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set image metadata
+        id: meta
+        run: echo "image-tag=ghcr.io/${GITHUB_ACTOR}/devops-monitor:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.image-tag }}
+
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+    needs:
+      - test
+      - build-and-push
+    env:
+      KUBECONFIG: ${{ github.workspace }}/kubeconfig
+      IMAGE_TAG: ${{ needs.build-and-push.outputs.image-tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Write kubeconfig
+        run: |
+          printf '%s' '${{ secrets.KUBE_CONFIG }}' > "$KUBECONFIG"
+          chmod 600 "$KUBECONFIG"
+
+      - name: Apply Kubernetes manifests
+        run: kubectl apply -f k8s/
+
+      - name: Update backend image
+        run: |
+          kubectl set image deployment/backend \
+            backend="${IMAGE_TAG}" \
+            -n devops-monitor
+
+      - name: Wait for rollout
+        run: kubectl rollout status deployment/backend -n devops-monitor --timeout=180s

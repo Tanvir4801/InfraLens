@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: devops-monitor-service
+  namespace: devops-monitor
+  labels:
+    app: devops-monitor
+    component: backend
+spec:
+  selector:
+    app: devops-monitor
+    component: backend
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: devops-monitor-nodeport
+  namespace: devops-monitor
+  labels:
+    app: devops-monitor
+    component: backend
+spec:
+  selector:
+    app: devops-monitor
+    component: backend
+  type: NodePort
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      nodePort: 30800
