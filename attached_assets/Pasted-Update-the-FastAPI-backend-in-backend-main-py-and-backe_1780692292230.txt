@@ -1,0 +1,96 @@
+Update the FastAPI backend in backend/main.py and backend/ai_service.py to replace ALL Claude API usage with Google Gemini 1.5 Flash (free tier). Here are the exact changes needed:
+
+1. INSTALL: Add "google-generativeai==0.8.3" to requirements.txt. Remove "anthropic" from requirements.txt.
+
+2. CREATE backend/ai_service.py with this content:
+   import google.generativeai as genai
+   import os
+   from dotenv import load_dotenv
+   load_dotenv()
+   genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+   model = genai.GenerativeModel("gemini-1.5-flash")
+
+   async def generate_incident_report(alert_name, severity, description, cpu_history, ram_history):
+       prompt = f"""You are a senior DevOps engineer writing an incident report.
+   
+   ALERT: {alert_name}
+   SEVERITY: {severity}
+   DESCRIPTION: {description}
+   CPU last 30min: {cpu_history}
+   RAM last 30min: {ram_history}
+   
+   Write a structured incident report with these sections:
+   ## What Happened
+   ## Root Cause Analysis
+   ## Immediate Actions Required
+   ## Prevention Steps
+   
+   Be concise, technical, and actionable. Max 250 words."""
+       response = model.generate_content(prompt)
+       return response.text
+
+   async def ai_chat_response(question, cpu, ram, disk, active_alerts):
+       prompt = f"""You are InfraLens AI, a DevOps monitoring assistant.
+   
+   Current server state:
+   - CPU: {cpu}%
+   - RAM: {ram}%  
+   - Disk: {disk}%
+   - Active alerts: {active_alerts}
+   
+   User question: {question}
+   
+   Answer in 2-3 sentences maximum. Be technical and precise."""
+       response = model.generate_content(prompt)
+       return response.text
+
+   async def generate_anomaly_summary(metric_name, value, threshold, trend):
+       prompt = f"""In one sentence, explain this server anomaly for a DevOps dashboard:
+   Metric: {metric_name}, Current value: {value}%, Threshold: {threshold}%, Trend: {trend}
+   Response must be under 15 words."""
+       response = model.generate_content(prompt)
+       return response.text
+
+3. UPDATE backend/main.py — replace any "from anthropic import Anthropic" with "from ai_service import generate_incident_report, ai_chat_response, generate_anomaly_summary"
+
+4. UPDATE the POST /api/incident-report endpoint:
+   @app.post("/api/incident-report")
+   async def incident_report(request: Request):
+       body = await request.json()
+       alert = body.get("alert", {})
+       metrics = body.get("metrics", {})
+       report_text = await generate_incident_report(
+           alert_name=alert.get("name", "Unknown"),
+           severity=alert.get("severity", "warning"),
+           description=alert.get("description", ""),
+           cpu_history=metrics.get("cpu_history", []),
+           ram_history=metrics.get("ram_history", [])
+       )
+       return {"report": report_text, "model": "gemini-1.5-flash"}
+
+5. UPDATE the GET /api/chat endpoint:
+   @app.get("/api/chat")
+   async def ai_chat(q: str, cpu: float = 0, ram: float = 0, disk: float = 0):
+       alerts = await fetch_active_alert_names()
+       response = await ai_chat_response(q, cpu, ram, disk, alerts)
+       return {"response": response, "model": "gemini-1.5-flash"}
+
+6. ADD to .env file:
+   GEMINI_API_KEY=your_gemini_api_key_here
+
+7. ADD error handling — if Gemini API fails (rate limit etc), return a fallback rule-based response:
+   def fallback_report(alert_name, cpu, ram):
+       if cpu > 85:
+           return f"High CPU alert: {alert_name}. CPU at {cpu}%. Recommend checking running processes with 'top' command and consider scaling the affected service."
+       elif ram > 85:
+           return f"High RAM alert: {alert_name}. RAM at {ram}%. Check for memory leaks with 'free -h'. Consider restarting high-memory services."
+       else:
+           return f"Alert: {alert_name}. Review system logs with 'journalctl -xe' for root cause. Monitor metrics for next 10 minutes."
+
+Also add Groq as a SECONDARY fallback (faster):
+   pip install groq
+   GROQ_API_KEY=your_groq_key_here (also free at console.groq.com)
+   
+   If Gemini fails → try Groq with llama-3.1-8b-instant
+   If Groq fails → use fallback_report() function
+   This gives 3-layer reliability: Gemini → Groq → rule-based
