@@ -1,0 +1,22 @@
+{
+  "name": "workspace",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@heroicons/react": "^2.2.0",
+    "axios": "^1.17.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-router-dom": "^7.17.0",
+    "react-scripts": "^5.0.1",
+    "recharts": "^3.8.1",
+    "web-vitals": "^2.1.4"
+  }
+}
