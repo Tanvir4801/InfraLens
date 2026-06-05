@@ -1,0 +1,62 @@
+Part A — InfraLens web console (React)
+
+This is a single React app inside your existing project. Create the folder infralens-web/ at the root.
+
+
+bash
+cd devops-monitor
+npx create-react-app infralens-web
+cd infralens-web
+npm install recharts axios @heroicons/react react-router-dom
+ App shell + sidebar layout:
+
+
+Build a React app called InfraLens — a dark-themed DevOps monitoring web dashboard.
+Dark background #0d1117, cards #161b22, borders #30363d, text #e6edf3, muted #8b949e.
+Create an App.jsx with:
+- A top navbar with logo "InfraLens" (green dot + text), a "3 nodes healthy" green pill badge, an alerts count badge in red, and a "Live · updated Xs ago" timestamp that increments every 3 seconds
+- A left sidebar (160px) with nav items: Dashboard, Servers, Alerts, Metrics, AI Predict, Logs, Settings — using react-router-dom for routing
+- Active nav item has a green right border and lighter background
+- Main content area on the right
+Make it fully responsive.
+ Dashboard page with live charts:
+
+
+Build a Dashboard.jsx React page that:
+1. Fetches GET http://localhost:8000/api/metrics every 5 seconds using axios
+2. Shows 4 stat cards at top: CPU avg (green if <60%, amber if 60-80%, red if >80%), RAM avg, Uptime formatted as "Xh Xm", Active Alerts count
+3. Shows an AI prediction banner card (blue tinted) if predicted overload: fetches GET /api/predict, shows "RAM overload predicted in X min" with confidence percent
+4. Shows 2 sparkline charts side by side using Recharts LineChart: CPU over last 20 data points, RAM over last 20 data points — store rolling history in a useRef array
+5. Shows a server health list: each row has colored dot (green/amber/red), server name, mini progress bar, percentage
+6. Shows an active alerts list: each alert has severity badge, name, "fired X mins ago"
+All on dark background #0d1117, cards #161b22.
+ Servers page:
+
+
+Build a Servers.jsx page that:
+1. Fetches GET /api/servers — returns array of {name, ip, cpu, ram, disk, uptime, status}
+2. Shows each server as a card with: status dot, server name, IP address, 3 mini gauge bars (CPU/RAM/Disk) with percentage labels, uptime, and a "View details" button
+3. Clicking "View details" opens a modal showing a Recharts AreaChart of that server's CPU history for the last 1 hour (fetch GET /api/servers/{name}/history)
+4. Has a search bar to filter servers by name
+5. A "Refresh" button with spinning icon while loading
+Dark theme, same colors as Dashboard.
+ AI Predict page:
+
+
+Build an AiPredict.jsx page that:
+1. Fetches GET /api/predict on load and shows a prediction summary card: will_overload (yes/no), predicted_max_cpu, minutes_until_overload, confidence as a percentage bar
+2. Shows a Recharts ComposedChart with: actual CPU data (solid green line) + Prophet forecast data (dashed blue line) + a red horizontal threshold line at 85%
+3. Has a "Generate Incident Report" button that calls POST /api/incident-report with last alert data, then displays the returned AI text in a card styled like a terminal (monospace font, dark background)
+4. Shows model info footer: "Prophet model · trained on last 2h · updated every 5 min"
+Same dark theme.
+ Dockerize the web app:
+
+
+Write a Dockerfile for the infralens-web React app:
+- Build stage: node:18-alpine, runs npm install and npm run build
+- Serve stage: nginx:alpine, copies build output, serves on port 80
+Also add this service to the existing docker-compose.yml:
+  infralens-web:
+    build: ./infralens-web
+    ports: ["3001:80"]
+    depends_on: [fastapi-backend]
