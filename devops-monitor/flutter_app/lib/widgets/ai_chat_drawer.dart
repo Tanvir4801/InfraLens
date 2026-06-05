@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../constants/app_theme.dart';
+import '../providers/metrics_provider.dart';
 import '../services/api_service.dart';
 
 class _ChatMessage {
@@ -43,7 +45,14 @@ class _AiChatDrawerState extends State<AiChatDrawer> {
     });
     _scrollToBottom();
     try {
-      final answer = await _api.postAiChat(q);
+      double cpu = 0, ram = 0, disk = 0;
+      try {
+        final mp = context.read<MetricsProvider>();
+        cpu  = mp.snapshot?.cpuPercent  ?? 0;
+        ram  = mp.snapshot?.ramPercent  ?? 0;
+        disk = mp.snapshot?.diskPercent ?? 0;
+      } catch (_) {}
+      final answer = await _api.postAiChat(q, cpu: cpu, ram: ram, disk: disk);
       _typewriterEffect(answer);
     } catch (_) {
       setState(() {

@@ -23,6 +23,10 @@ args = "Start application"
 task = "workflow.run"
 args = "Backend API"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Flutter Web"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -46,6 +50,18 @@ outputType = "console"
 task = "shell.exec"
 args = "cd devops-monitor/backend && /home/runner/workspace/.pythonlibs/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
 waitForPort = 8000
+
+[[workflows.workflow]]
+name = "Flutter Web"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd devops-monitor/flutter_app && python3 -m http.server 3000 --directory build/web"
+
+[[ports]]
+localPort = 3000
+externalPort = 3001
 
 [[ports]]
 localPort = 5000

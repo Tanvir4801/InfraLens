@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, generate_latest
 from starlette.responses import Response
 
-from incident_report import generate_incident_report
+from ai_service import ai_chat_response, generate_incident_report as ai_incident_report
 from predictor import generate_prediction
 
 load_dotenv()
@@ -272,54 +272,37 @@ app.add_middleware(
 )
 
 
-_CHAT_RESPONSES: dict[str, str] = {
-    "cpu": (
-        "Based on current telemetry, CPU usage appears elevated. "
-        "Check running processes with `top` or `htop`, review recent deploys, "
-        "and consider scaling horizontally if load persists above 70%."
-    ),
-    "memory": (
-        "Memory pressure detected. Review heap allocation in your services, "
-        "look for memory leaks with `ps aux --sort=-%mem`, and consider "
-        "increasing swap or upgrading the node."
-    ),
-    "disk": (
-        "Disk usage is climbing. Archive or rotate old logs (`journalctl --vacuum-size=1G`), "
-        "remove unused Docker images (`docker system prune`), "
-        "and set up log rotation to prevent future issues."
-    ),
-    "alert": (
-        "Active alerts require attention. Prioritise critical severity first. "
-        "Use the AI Incident Report feature on each alert for detailed root-cause analysis "
-        "and recommended remediation steps."
-    ),
-    "health": (
-        "Overall system health depends on CPU, RAM, disk utilisation and active alert count. "
-        "Aim to keep all metrics below 70% for a healthy score above 80. "
-        "Reduce alert count to improve the score further."
-    ),
-    "predict": (
-        "The prediction engine uses a Prophet time-series model trained on the last 2 hours "
-        "of CPU data. It forecasts the next 30 minutes in 5-minute steps and flags overload "
-        "risk when predicted CPU exceeds 85%."
-    ),
-}
-
-_DEFAULT_CHAT = (
-    "I'm InfraLens AI, your DevOps assistant. I can help you analyse infrastructure metrics, "
-    "investigate alerts, and predict potential issues. "
-    "Ask me about CPU, memory, disk, alerts, or system health!"
-)
+async def _fetch_active_alert_names() -> list[str]:
+    try:
+        data = await get_active_alerts()
+        return [
+            a.get("labels", {}).get("alertname", a.get("name", "Alert"))
+            for a in data.get("alerts", [])
+        ]
+    except Exception:
+        return []
 
 
 @app.get("/api/chat")
-async def api_chat(q: str = "") -> dict[str, str]:
+async def api_chat(
+    q: str = "",
+    cpu: float = 0.0,
+    ram: float = 0.0,
+    disk: float = 0.0,
+) -> dict[str, str]:
     request_counter.labels(path="/api/chat", method="GET").inc()
-    q_lower = q.lower()
-    for keyword, response in _CHAT_RESPONSES.items():
-        if keyword in q_lower:
-            return {"answer": response}
-    return {"answer": _DEFAULT_CHAT}
+    # Use live metrics if caller didn't provide them
+    if cpu == 0.0 and ram == 0.0:
+        try:
+            live = await get_current_metrics()
+            cpu  = live.get("cpu_percent",  cpu)
+            ram  = live.get("ram_percent",  ram)
+            disk = live.get("disk_percent", disk)
+        except Exception:
+            pass
+    alerts = await _fetch_active_alert_names()
+    response_text, model_used = await ai_chat_response(q, cpu, ram, disk, alerts)
+    return {"response": response_text, "model": model_used}
 
 
 @app.get("/health")
@@ -378,19 +361,25 @@ async def api_predict() -> dict[str, Any]:
 
 
 @app.post("/api/incident-report")
-async def api_incident_report(payload: dict[str, Any] = Body(...)) -> Response:
+async def api_incident_report(payload: dict[str, Any] = Body(...)) -> dict[str, str]:
     request_counter.labels(path="/api/incident-report", method="POST").inc()
 
-    alert_data = payload.get("alert_data") or payload.get("alert")
-    if not isinstance(alert_data, dict):
-        alert_data = {}
+    alert = payload.get("alert_data") or payload.get("alert") or {}
+    if not isinstance(alert, dict):
+        alert = {}
 
-    metrics_data = payload.get("metrics_data")
-    if not isinstance(metrics_data, dict):
-        metrics_data = None
+    metrics = payload.get("metrics_data") or payload.get("metrics") or {}
+    if not isinstance(metrics, dict):
+        metrics = {}
 
-    report = await generate_incident_report(alert_data=alert_data, metrics_data=metrics_data)
-    return Response(content=report, media_type="text/plain")
+    report_text, model_used = await ai_incident_report(
+        alert_name=alert.get("name", "Unknown"),
+        severity=alert.get("severity", "warning"),
+        description=alert.get("description", ""),
+        cpu_history=metrics.get("cpu_history", metrics.get("cpu", [])),
+        ram_history=metrics.get("ram_history", metrics.get("ram", [])),
+    )
+    return {"report": report_text, "model": model_used}
 
 
 @app.websocket("/ws/live")

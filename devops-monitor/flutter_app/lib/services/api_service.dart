@@ -97,11 +97,19 @@ class ApiService {
     }
   }
 
-  Future<IncidentReport> postIncidentReport(AlertModel alert) async {
+  Future<IncidentReport> postIncidentReport(
+    AlertModel alert, {
+    List<double> cpuHistory = const [],
+    List<double> ramHistory = const [],
+  }) async {
     if (_mock) return MockDataService.postIncidentReport(alert);
     try {
       final body = jsonEncode({
         'alert_data': alert.toJson(),
+        'metrics': {
+          'cpu_history': cpuHistory,
+          'ram_history': ramHistory,
+        },
       });
       final r = await http.post(
         Uri.parse('$_base/api/incident-report'),
@@ -109,7 +117,9 @@ class ApiService {
         body: body,
       ).timeout(const Duration(seconds: 30));
       if (r.statusCode == 200) {
-        return IncidentReport.fromText(r.body);
+        final data = jsonDecode(r.body) as Map<String, dynamic>;
+        final text = data['report'] as String? ?? r.body;
+        return IncidentReport.fromText(text);
       }
       throw HttpException('Status ${r.statusCode}');
     } catch (_) {
@@ -117,15 +127,24 @@ class ApiService {
     }
   }
 
-  Future<String> postAiChat(String question) async {
+  Future<String> postAiChat(
+    String question, {
+    double cpu = 0,
+    double ram = 0,
+    double disk = 0,
+  }) async {
     if (_mock) return MockDataService.postAiChat(question);
     try {
-      final r = await http.get(
-        Uri.parse('$_base/api/chat').replace(queryParameters: {'q': question}),
-      ).timeout(_timeout);
+      final uri = Uri.parse('$_base/api/chat').replace(queryParameters: {
+        'q': question,
+        'cpu':  cpu.toStringAsFixed(1),
+        'ram':  ram.toStringAsFixed(1),
+        'disk': disk.toStringAsFixed(1),
+      });
+      final r = await http.get(uri).timeout(_timeout);
       if (r.statusCode == 200) {
         final data = jsonDecode(r.body) as Map<String, dynamic>;
-        return data['answer'] as String? ?? r.body;
+        return data['response'] as String? ?? data['answer'] as String? ?? r.body;
       }
       return MockDataService.postAiChat(question);
     } catch (_) {
