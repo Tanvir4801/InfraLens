@@ -7,7 +7,13 @@ from typing import Any
 
 import httpx
 import pandas as pd
-from prophet import Prophet
+
+try:
+    from prophet import Prophet
+    PROPHET_AVAILABLE = True
+except ImportError:
+    Prophet = None  # type: ignore
+    PROPHET_AVAILABLE = False
 
 PROMETHEUS_DEFAULT_URL = "http://prometheus:9090"
 CPU_QUERY = 'rate(node_cpu_seconds_total{mode!="idle"}[5m]) * 100'
@@ -111,11 +117,13 @@ async def fetch_cpu_history(
     return frame
 
 
-def train_prophet_model(frame: pd.DataFrame) -> Prophet | None:
+def train_prophet_model(frame: pd.DataFrame) -> "Prophet | None":
     if frame.empty:
         raise ValueError("Training data frame is empty")
     prophet_frame = frame.rename(columns={"ds": "ds", "y": "y"})[["ds", "y"]].copy()
     prophet_frame["ds"] = pd.to_datetime(prophet_frame["ds"], utc=True).dt.tz_convert(None)
+    if not PROPHET_AVAILABLE:
+        return None
     try:
         model = Prophet(
             daily_seasonality=True,

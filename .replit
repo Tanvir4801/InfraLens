@@ -23,10 +23,6 @@ args = "Start application"
 task = "workflow.run"
 args = "Backend API"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Flutter Web"
-
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -36,7 +32,8 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd devops-monitor/infralens-web/infralens-web && PORT=3001 BROWSER=none npm start"
+args = "cd devops-monitor/infralens-web/infralens-web && PORT=5000 BROWSER=none npm start"
+waitForPort = 5000
 
 [[workflows.workflow]]
 name = "Backend API"
@@ -47,16 +44,8 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd devops-monitor/backend && /home/runner/workspace/.pythonlibs/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+args = "cd devops-monitor/backend && python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
 waitForPort = 8000
-
-[[workflows.workflow]]
-name = "Flutter Web"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd devops-monitor/flutter_app && python3 -m http.server 5000 --directory build/web"
 
 [[ports]]
 localPort = 3000
@@ -69,10 +58,6 @@ externalPort = 3002
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 8000
-externalPort = 8000
 
 [deployment]
 deploymentTarget = "autoscale"
