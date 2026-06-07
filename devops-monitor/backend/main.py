@@ -4,14 +4,16 @@ import os
 import random
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any
 
 import httpx
 import psutil
 from dotenv import load_dotenv
-from fastapi import Body, FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import uuid
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, generate_latest
 from starlette.responses import Response
 
@@ -380,6 +382,120 @@ async def api_incident_report(payload: dict[str, Any] = Body(...)) -> dict[str, 
         ram_history=metrics.get("ram_history", metrics.get("ram", [])),
     )
     return {"report": report_text, "model": model_used}
+
+
+
+# Simulated state for new endpoints
+_incident_events: list[dict[str, Any]] = []
+
+
+def _log_incident(description: str, severity: str = "info"):
+    _incident_events.append({
+        "id": str(uuid.uuid4()),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "description": description,
+        "severity": severity
+    })
+    if len(_incident_events) > 50:
+        _incident_events.pop(0)
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+@app.get("/api/containers/{id}/logs")
+async def api_container_logs(id: str) -> list[str]:
+    request_counter.labels(path="/api/containers/{id}/logs", method="GET").inc()
+    log_templates = [
+        "[{ts}] INFO  com.example.service.Worker - Processing task {uuid}",
+        "[{ts}] DEBUG com.example.service.Cache - Cache hit for key user:{user_id}",
+        "[{ts}] WARN  com.example.service.Auth - Failed login attempt for user {user_id}",
+        "[{ts}] INFO  com.example.service.Api - GET /api/v1/resource/123 200 45ms",
+        "[{ts}] ERROR com.example.service.Db - Connection timeout on shard-0",
+    ]
+    logs = []
+    now = datetime.now(timezone.utc)
+    for i in range(50):
+        log_ts = (now - timedelta(seconds=i * 5)).isoformat()
+        template = random.choice(log_templates)
+        logs.append(template.format(
+            ts=log_ts,
+            uuid=str(uuid.uuid4())[:8],
+            user_id=random.randint(1000, 9999)
+        ))
+    return logs
+
+
+@app.post("/api/containers/{id}/restart")
+async def api_container_restart(id: str) -> dict[str, Any]:
+    request_counter.labels(path="/api/containers/{id}/restart", method="POST").inc()
+    _log_incident(f"Container {id} restart initiated", "warning")
+    return {"success": True, "message": f"Container {id} restart initiated"}
+
+
+@app.get("/api/topology")
+async def api_topology() -> dict[str, Any]:
+    request_counter.labels(path="/api/topology", method="GET").inc()
+    nodes = [
+        {"id": "web-server", "label": "Web Server", "status": "healthy", "type": "server"},
+        {"id": "api-server", "label": "API Server", "status": "warning", "type": "server"},
+        {"id": "db-server", "label": "DB Server", "status": "healthy", "type": "server"},
+        {"id": "load-balancer", "label": "Load Balancer", "status": "healthy", "type": "service"},
+        {"id": "cache", "label": "Redis Cache", "status": "healthy", "type": "service"},
+    ]
+    edges = [
+        {"from": "load-balancer", "to": "web-server"},
+        {"from": "web-server", "to": "api-server"},
+        {"from": "api-server", "to": "db-server"},
+        {"from": "api-server", "to": "cache"},
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+@app.get("/api/incidents")
+async def api_incidents() -> list[dict[str, Any]]:
+    request_counter.labels(path="/api/incidents", method="GET").inc()
+    # Add some initial mock incidents if list is empty
+    if not _incident_events:
+        for i in range(5):
+            _log_incident(f"System boot sequence {i} completed", "info")
+    return _incident_events[-10:]
+
+
+@app.get("/api/cost-analysis")
+async def api_cost_analysis() -> list[dict[str, Any]]:
+    request_counter.labels(path="/api/cost-analysis", method="GET").inc()
+    return [
+        {"container": "web-front-1", "avg_cpu": 12.5, "avg_ram": 450, "recommendation": "Right-size instance", "saving_usd": 15.5},
+        {"container": "api-worker-a", "avg_cpu": 85.2, "avg_ram": 1200, "recommendation": "Upscale required", "saving_usd": 0},
+        {"container": "db-primary", "avg_cpu": 45.0, "avg_ram": 4096, "recommendation": "Optimal", "saving_usd": 0},
+        {"container": "cache-node", "avg_cpu": 5.2, "avg_ram": 256, "recommendation": "Downgrade instance", "saving_usd": 8.0},
+    ]
+
+
+@app.post("/api/auth/login")
+async def api_login(req: LoginRequest) -> dict[str, str]:
+    request_counter.labels(path="/api/auth/login", method="POST").inc()
+    role = "viewer"
+    if "admin" in req.username.lower():
+        role = "admin"
+    elif "operator" in req.username.lower():
+        role = "operator"
+    
+    return {
+        "access_token": "demo-jwt-token-" + str(uuid.uuid4()),
+        "role": role,
+        "username": req.username
+    }
+
+
+@app.patch("/api/alerts/{id}/acknowledge")
+async def api_acknowledge_alert(id: str) -> dict[str, bool]:
+    request_counter.labels(path="/api/alerts/{id}/acknowledge", method="PATCH").inc()
+    _log_incident(f"Alert {id} acknowledged by admin", "info")
+    return {"success": True}
 
 
 @app.websocket("/ws/live")

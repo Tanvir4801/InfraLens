@@ -1,2 +1,5 @@
 - [Gemini model + key setup](gemini-setup.md) — Key starts "AQ.Ab8RN"; only gemini-2.0-flash works (not 1.5); free tier hits 429 quickly so rule-based fallback is essential.
 - [Flutter on Replit](flutter-replit.md) — Flutter 3.32/Dart 3.8 installs via installSystemDependencies; SDK constraint must be >=3.0.0 <4.0.0; fl_chart must stay ^0.68.0 (1.x conflicts with flutter_test vector_math pin).
+- [Replit port URL derivation](replit-port-urls.md) — port 8000 URL = primaryHost.replaceFirst('-00-', '-00-8000--'); primary domain maps to port 5000; use this pattern for Flutter/React cross-port calls.
+- [Flutter web URL strategy](flutter-web-urls.md) — use Uri.base.host + kIsWeb to derive backend URL dynamically; never import dart:html (triggers avoid_web_libraries_in_flutter warning).
+- [React CRA proxy + WS](react-cra-proxy.md) — package.json "proxy": "http://localhost:8000" handles /api/*; WS URL must be constructed from window.location.host with port derivation; eslint-disable-line for connect dep in useEffect.

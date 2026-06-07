@@ -4,8 +4,9 @@ import '../constants/app_theme.dart';
 class PulseDot extends StatefulWidget {
   final bool healthy;
   final double size;
+  final Color? color;
 
-  const PulseDot({super.key, this.healthy = true, this.size = 10});
+  const PulseDot({super.key, this.healthy = true, this.size = 10, this.color});
 
   @override
   State<PulseDot> createState() => _PulseDotState();
@@ -23,8 +24,8 @@ class _PulseDotState extends State<PulseDot> with SingleTickerProviderStateMixin
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     );
-    _scale   = Tween<double>(begin: 1.0, end: 2.4).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
-    _opacity = Tween<double>(begin: 0.6, end: 0.0).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
+    _scale   = Tween<double>(begin: 1.0, end: 1.5).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+    _opacity = Tween<double>(begin: 0.8, end: 0.0).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
     if (widget.healthy) _ctrl.repeat();
   }
 
@@ -46,7 +47,7 @@ class _PulseDotState extends State<PulseDot> with SingleTickerProviderStateMixin
 
   @override
   Widget build(BuildContext context) {
-    final color = widget.healthy ? AppTheme.green : AppTheme.red;
+    final color = widget.color ?? (widget.healthy ? AppTheme.green : AppTheme.red);
     if (!widget.healthy) {
       return Container(
         width: widget.size,
@@ -57,8 +58,8 @@ class _PulseDotState extends State<PulseDot> with SingleTickerProviderStateMixin
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (_, __) => SizedBox(
-        width: widget.size * 2.8,
-        height: widget.size * 2.8,
+        width: widget.size * 2.0,
+        height: widget.size * 2.0,
         child: Stack(
           alignment: Alignment.center,
           children: [
@@ -76,7 +77,17 @@ class _PulseDotState extends State<PulseDot> with SingleTickerProviderStateMixin
             Container(
               width: widget.size,
               height: widget.size,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.4),
+                    blurRadius: 4,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
             ),
           ],
         ),

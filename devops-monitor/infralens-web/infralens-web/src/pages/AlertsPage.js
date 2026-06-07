@@ -1,116 +1,161 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { fetchAlerts, acknowledgeAlert, generateRCA } from '../services/api';
+import { toast } from 'react-toastify';
+import { formatDistanceToNow } from 'date-fns';
 
-function severityClass(sev) {
-  const s = (sev || '').toLowerCase();
-  if (s === 'critical') return 'sev-critical';
-  if (s === 'warning') return 'sev-warning';
-  return 'sev-info';
-}
-
-function timeAgo(dateStr) {
-  if (!dateStr) return 'unknown';
-  try {
-    const d = new Date(dateStr);
-    const diff = Math.floor((Date.now() - d.getTime()) / 60000);
-    if (diff < 1) return 'just now';
-    if (diff < 60) return `${diff}m ago`;
-    return `${Math.floor(diff / 60)}h ago`;
-  } catch {
-    return dateStr;
-  }
-}
-
-const MOCK_ALERTS = [
-  { id: 1, severity: 'critical', name: 'High memory on node-2', description: 'RAM usage exceeded 85% threshold', node: 'node-2', firedAt: new Date(Date.now() - 4 * 60000).toISOString() },
-  { id: 2, severity: 'warning', name: 'Disk usage > 75% on node-3', description: 'Available disk space falling below safe threshold', node: 'node-3', firedAt: new Date(Date.now() - 12 * 60000).toISOString() },
-  { id: 3, severity: 'info', name: 'CPU spike on node-1', description: 'Temporary CPU spike above 70%', node: 'node-1', firedAt: new Date(Date.now() - 35 * 60000).toISOString() },
-];
-
-export default function AlertsPage({ alerts, apiBase }) {
+export default function AlertsPage() {
+  const [alerts, setAlerts] = useState([]);
   const [filter, setFilter] = useState('all');
+  const [lastUpdated, setLastUpdated] = useState(0);
+  const [rcaCache, setRcaCache] = useState({});
+  const [loadingRca, setLoadingRca] = useState({});
 
-  const rawAlerts = alerts?.length > 0
-    ? alerts.map((a, i) => ({
-        id: i,
-        severity: (a.labels?.severity || a.severity || 'info').toLowerCase(),
-        name: a.annotations?.summary || a.labels?.alertname || 'Alert',
-        description: a.annotations?.description || a.annotations?.message || '',
-        node: a.labels?.instance || a.labels?.node || '—',
-        firedAt: a.startsAt || a.fired_at,
-      }))
-    : MOCK_ALERTS;
+  const load = useCallback(async () => {
+    try {
+      const data = await fetchAlerts();
+      setAlerts(data);
+      setLastUpdated(0);
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
 
-  const displayed = filter === 'all' ? rawAlerts : rawAlerts.filter(a => a.severity === filter);
+  useEffect(() => {
+    load();
+    const interval = setInterval(load, 30000);
+    const timer = setInterval(() => setLastUpdated(prev => prev + 1), 1000);
+    return () => {
+      clearInterval(interval);
+      clearInterval(timer);
+    };
+  }, [load]);
 
-  const counts = rawAlerts.reduce((acc, a) => {
-    acc[a.severity] = (acc[a.severity] || 0) + 1;
-    return acc;
-  }, {});
+  const handleAcknowledge = async (id) => {
+    try {
+      await acknowledgeAlert(id);
+      toast.success('Alert acknowledged');
+      load();
+    } catch (err) {
+      toast.error('Failed to acknowledge alert');
+    }
+  };
+
+  const handleGenerateRCA = async (alert) => {
+    if (rcaCache[alert.id]) return;
+    
+    setLoadingRca(prev => ({ ...prev, [alert.id]: true }));
+    try {
+      const res = await generateRCA(alert, {});
+      setRcaCache(prev => ({ ...prev, [alert.id]: res.report }));
+      toast.success('RCA generated');
+    } catch (err) {
+      toast.error('Failed to generate RCA');
+    } finally {
+      setLoadingRca(prev => ({ ...prev, [alert.id]: false }));
+    }
+  };
+
+  const filteredAlerts = alerts.filter(a => {
+    if (filter === 'all') return true;
+    if (filter === 'critical') return a.severity?.toLowerCase() === 'critical';
+    if (filter === 'warning') return a.severity?.toLowerCase() === 'warning';
+    if (filter === 'acknowledged') return a.acknowledged;
+    return true;
+  });
+
+  const counts = {
+    all: alerts.length,
+    critical: alerts.filter(a => a.severity?.toLowerCase() === 'critical').length,
+    warning: alerts.filter(a => a.severity?.toLowerCase() === 'warning').length,
+    acknowledged: alerts.filter(a => a.acknowledged).length,
+  };
 
   return (
-    <div>
-      <div className="page-header">
-        <div className="page-title">Alerts</div>
-        <div className="page-subtitle">Active and recent alerting events</div>
+    <div className="p-4 bg-gray-900 text-white min-h-screen">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Alerts</h1>
+        <span className="text-sm text-gray-400">Updated {lastUpdated}s ago</span>
       </div>
 
-      {/* Summary pills */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 18, flexWrap: 'wrap' }}>
-        {[
-          { key: 'all', label: 'All', count: rawAlerts.length, color: '#8b949e' },
-          { key: 'critical', label: 'Critical', count: counts.critical || 0, color: '#f85149' },
-          { key: 'warning', label: 'Warning', count: counts.warning || 0, color: '#d29922' },
-          { key: 'info', label: 'Info', count: counts.info || 0, color: '#58a6ff' },
-        ].map(({ key, label, count, color }) => (
+      <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+        {['all', 'critical', 'warning', 'acknowledged'].map(k => (
           <button
-            key={key}
-            onClick={() => setFilter(key)}
-            style={{
-              background: filter === key ? '#21262d' : '#161b22',
-              border: `1px solid ${filter === key ? color : '#30363d'}`,
-              borderRadius: 6,
-              color: filter === key ? color : '#8b949e',
-              padding: '5px 14px',
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
+            key={k}
+            onClick={() => setFilter(k)}
+            className={`px-4 py-2 rounded-full text-sm font-bold border transition-all ${
+              filter === k 
+                ? 'bg-blue-600 border-blue-500 text-white' 
+                : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'
+            }`}
           >
-            {label}
-            <span style={{ background: '#0d1117', borderRadius: 10, padding: '0 6px', fontSize: 11 }}>{count}</span>
+            {k.toUpperCase()} ({counts[k]})
           </button>
         ))}
       </div>
 
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        {displayed.length === 0 ? (
-          <div className="no-data" style={{ padding: '40px 0' }}>✓ No alerts matching filter</div>
+      <div className="space-y-4">
+        {filteredAlerts.length === 0 ? (
+          <div className="text-center py-12 text-gray-500 bg-gray-800 rounded-lg border border-gray-700">
+             ✓ No alerts matching the selected filter
+          </div>
         ) : (
-          <table className="alert-table">
-            <thead>
-              <tr>
-                <th>Severity</th>
-                <th>Alert</th>
-                <th>Node</th>
-                <th>Description</th>
-                <th>Fired</th>
-              </tr>
-            </thead>
-            <tbody>
-              {displayed.map(a => (
-                <tr key={a.id}>
-                  <td><span className={`sev-badge ${severityClass(a.severity)}`}>{a.severity}</span></td>
-                  <td style={{ fontWeight: 600 }}>{a.name}</td>
-                  <td style={{ color: '#8b949e', fontFamily: 'monospace', fontSize: 12 }}>{a.node}</td>
-                  <td style={{ color: '#8b949e', maxWidth: 220 }}>{a.description || '—'}</td>
-                  <td style={{ color: '#8b949e', whiteSpace: 'nowrap' }}>{timeAgo(a.firedAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          filteredAlerts.map(a => (
+            <div key={a.id} className={`bg-gray-800 rounded-lg border-l-4 overflow-hidden shadow-lg ${
+              a.severity?.toLowerCase() === 'critical' ? 'border-red-500' : 'border-yellow-500'
+            }`}>
+              <div className="p-4 flex flex-col md:flex-row justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-1">
+                    <span className={`text-[10px] uppercase font-black px-1.5 py-0.5 rounded ${
+                      a.severity?.toLowerCase() === 'critical' ? 'bg-red-900 text-red-400' : 'bg-yellow-900 text-yellow-400'
+                    }`}>
+                      {a.severity}
+                    </span>
+                    <h3 className="font-bold text-lg">{a.name}</h3>
+                    <span className="text-xs text-gray-500">
+                      {a.fired_at ? formatDistanceToNow(new Date(a.fired_at), { addSuffix: true }) : 'unknown time'}
+                    </span>
+                  </div>
+                  <div className="text-sm text-gray-400 mb-2">{a.description}</div>
+                  <div className="text-xs text-gray-500 font-mono">Source: {a.source || 'system'}</div>
+                </div>
+                
+                <div className="flex gap-2 items-start">
+                  <button 
+                    onClick={() => handleGenerateRCA(a)}
+                    disabled={loadingRca[a.id]}
+                    className="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-600/50 rounded text-xs font-bold transition-colors disabled:opacity-50"
+                  >
+                    {loadingRca[a.id] ? 'Analyzing...' : rcaCache[a.id] ? 'RCA Generated' : 'Generate AI RCA'}
+                  </button>
+                  {!a.acknowledged && (
+                    <button 
+                      onClick={() => handleAcknowledge(a.id)}
+                      className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded text-xs font-bold transition-colors"
+                    >
+                      Acknowledge
+                    </button>
+                  )}
+                </div>
+              </div>
+              
+              {rcaCache[a.id] && (
+                <div className="px-4 pb-4">
+                  <div className="bg-blue-900/10 border border-blue-500/30 rounded p-3">
+                    <div className="flex items-center gap-2 mb-2 text-blue-400 font-bold text-xs uppercase tracking-wider">
+                      <span>✦ AI Root Cause Analysis</span>
+                    </div>
+                    <div className="text-sm text-blue-100 leading-relaxed italic">
+                      {rcaCache[a.id]}
+                    </div>
+                    <div className="mt-2 text-[10px] text-blue-500/70 font-bold uppercase">
+                      Generated by Gemini 2.0
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))
         )}
       </div>
     </div>

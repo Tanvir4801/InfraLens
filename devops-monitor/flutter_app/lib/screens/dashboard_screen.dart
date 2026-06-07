@@ -34,6 +34,16 @@ class DashboardScreen extends StatelessWidget {
           backgroundColor: AppTheme.bgPrimary,
           appBar: AppBar(
             title: const Text('DevOps Monitoring'),
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(20),
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  '${snap?.containerCount ?? 3} containers running',
+                  style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                ),
+              ),
+            ),
             actions: [
               Padding(
                 padding: const EdgeInsets.only(right: 16),
@@ -61,22 +71,68 @@ class DashboardScreen extends StatelessWidget {
                       const SizedBox(height: 12),
 
                       // Health score card
+                      GestureDetector(
+                        onTap: () {
+                          showDialog(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              backgroundColor: AppTheme.bgCard,
+                              title: const Text('Health Score Calculation', style: TextStyle(color: AppTheme.textPrimary)),
+                              content: const Text(
+                                'The health score is calculated based on:\n'
+                                '• CPU usage (40%)\n'
+                                '• RAM usage (30%)\n'
+                                '• Disk usage (20%)\n'
+                                '• Active Alerts (10%)',
+                                style: TextStyle(color: AppTheme.textSecondary),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text('OK', style: TextStyle(color: AppTheme.green)),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                        child: _Card(
+                          child: Row(
+                            children: [
+                              Expanded(child: HealthScoreWidget(score: healthScore)),
+                              Container(width: 1, height: 80, color: AppTheme.border),
+                              Expanded(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    _StatRow(label: 'CPU',  value: '${snap.cpuPercent.toStringAsFixed(1)}%', color: AppTheme.getMetricColor(snap.cpuPercent)),
+                                    const SizedBox(height: 6),
+                                    _StatRow(label: 'RAM',  value: '${snap.ramPercent.toStringAsFixed(1)}%', color: AppTheme.getMetricColor(snap.ramPercent)),
+                                    const SizedBox(height: 6),
+                                    _StatRow(label: 'Disk', value: '${snap.diskPercent.toStringAsFixed(1)}%', color: AppTheme.getMetricColor(snap.diskPercent)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      
                       _Card(
                         child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
-                            Expanded(child: HealthScoreWidget(score: healthScore)),
-                            Container(width: 1, height: 80, color: AppTheme.border),
-                            Expanded(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  _StatRow(label: 'CPU',  value: '${snap.cpuPercent.toStringAsFixed(1)}%', color: AppTheme.getMetricColor(snap.cpuPercent)),
-                                  const SizedBox(height: 6),
-                                  _StatRow(label: 'RAM',  value: '${snap.ramPercent.toStringAsFixed(1)}%', color: AppTheme.getMetricColor(snap.ramPercent)),
-                                  const SizedBox(height: 6),
-                                  _StatRow(label: 'Disk', value: '${snap.diskPercent.toStringAsFixed(1)}%', color: AppTheme.getMetricColor(snap.diskPercent)),
-                                ],
-                              ),
+                            Column(
+                              children: [
+                                const Text('↓ IN', style: TextStyle(color: AppTheme.textMuted, fontSize: 10)),
+                                Text('${snap.networkInKbps?.toStringAsFixed(1) ?? '0.0'} KB/s', style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                            Container(width: 1, height: 30, color: AppTheme.border),
+                            Column(
+                              children: [
+                                const Text('↑ OUT', style: TextStyle(color: AppTheme.textMuted, fontSize: 10)),
+                                Text('${snap.networkOutKbps?.toStringAsFixed(1) ?? '0.0'} KB/s', style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
+                              ],
                             ),
                           ],
                         ),
@@ -158,7 +214,8 @@ class _ConnectionPill extends StatelessWidget {
       WsState.connecting   => (AppTheme.amber, 'Connecting…'),
       WsState.disconnected => (AppTheme.red,   'Offline'),
     };
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 500),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),

@@ -1,5 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+
 import Dashboard from './pages/Dashboard';
 import Servers from './pages/Servers';
 import AlertsPage from './pages/AlertsPage';
@@ -7,11 +10,20 @@ import Metrics from './pages/Metrics';
 import AiPredict from './pages/AiPredict';
 import Logs from './pages/Logs';
 import Settings from './pages/Settings';
+import AiCopilot from './pages/AiCopilot';
+import InfraMap from './pages/InfraMap';
+import IncidentTimeline from './pages/IncidentTimeline';
+import CostOptimizer from './pages/CostOptimizer';
+import Login from './pages/Login';
+
+import { AuthProvider, useAuth } from './context/AuthContext';
+import ProtectedRoute from './components/ProtectedRoute';
+import { useWebSocket } from './hooks/useWebSocket';
 import './App.css';
 
-const API_BASE = '';
-
-function Sidebar({ alertCount }) {
+function Sidebar() {
+  const { user, logout } = useAuth();
+  
   return (
     <nav className="sidebar">
       <div className="sidebar-section-label">OVERVIEW</div>
@@ -23,7 +35,9 @@ function Sidebar({ alertCount }) {
       </NavLink>
       <NavLink to="/alerts" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
         <span className="nav-icon">🔔</span> Alerts
-        {alertCount > 0 && <span className="badge-red">{alertCount}</span>}
+      </NavLink>
+      <NavLink to="/infra-map" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
+        <span className="nav-icon">🗺</span> Infra Map
       </NavLink>
 
       <div className="sidebar-section-label" style={{ marginTop: 20 }}>ANALYTICS</div>
@@ -33,6 +47,15 @@ function Sidebar({ alertCount }) {
       <NavLink to="/ai-predict" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
         <span className="nav-icon">✦</span> AI Predict
       </NavLink>
+      <NavLink to="/ai-copilot" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
+        <span className="nav-icon">🤖</span> AI Copilot
+      </NavLink>
+      <NavLink to="/incident-timeline" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
+        <span className="nav-icon">🕒</span> Timeline
+      </NavLink>
+      <NavLink to="/cost-optimizer" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
+        <span className="nav-icon">💰</span> Optimizer
+      </NavLink>
 
       <div className="sidebar-section-label" style={{ marginTop: 20 }}>SYSTEM</div>
       <NavLink to="/logs" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
@@ -41,135 +64,67 @@ function Sidebar({ alertCount }) {
       <NavLink to="/settings" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
         <span className="nav-icon">⚙</span> Settings
       </NavLink>
+
+      <div className="mt-auto p-4 border-t border-gray-700">
+         <div className="text-xs text-gray-500 mb-2">Logged in as:</div>
+         <div className="text-sm font-bold text-blue-400 mb-4">{user?.username} ({user?.role})</div>
+         <button onClick={logout} className="w-full bg-red-900/20 text-red-400 border border-red-900/50 py-1.5 rounded text-xs font-bold hover:bg-red-900/40 transition-all">
+            LOGOUT
+         </button>
+      </div>
     </nav>
   );
 }
 
-function Topbar({ metrics, alertCount, wsConnected }) {
-  const [secAgo, setSecAgo] = useState(0);
-  const lastUpdateRef = useRef(Date.now());
-
-  useEffect(() => {
-    if (metrics) {
-      lastUpdateRef.current = Date.now();
-      setSecAgo(0);
-    }
-  }, [metrics]);
-
-  useEffect(() => {
-    const t = setInterval(() => {
-      setSecAgo(Math.round((Date.now() - lastUpdateRef.current) / 1000));
-    }, 1000);
-    return () => clearInterval(t);
-  }, []);
+function Topbar() {
+  const { metrics, connectionState } = useWebSocket();
+  useEffect(() => {}, [metrics]);
 
   return (
     <header className="topbar">
       <div className="topbar-left">
         <span className="logo-dot" />
-        <span className="logo-text">InfraLens</span>
+        <span className="logo-text">InfraLens <span className="text-[10px] bg-blue-600 px-1 rounded ml-1">PRO</span></span>
       </div>
       <div className="topbar-right">
-        <span className="pill-green">● 3 nodes healthy</span>
-        {alertCount > 0 && (
-          <span className="pill-red">🔔 {alertCount} alert{alertCount !== 1 ? 's' : ''}</span>
-        )}
-        <span className="live-badge">
-          <span className={wsConnected ? 'live-dot' : 'live-dot-off'} />
-          {wsConnected ? 'Live' : 'Polling'} · updated {secAgo}s ago
-        </span>
-        <span className="topbar-menu">···</span>
+        <div className="flex items-center gap-4">
+           <div className="flex flex-col items-end">
+              <span className="text-[10px] text-gray-500 font-bold uppercase">System Status</span>
+              <span className="text-xs font-bold text-green-400">● Optimal</span>
+           </div>
+           <div className={`px-3 py-1 rounded-full flex items-center gap-2 border ${
+             connectionState === 'connected' ? 'bg-green-900/20 border-green-500/50 text-green-400' : 
+             connectionState === 'reconnecting' ? 'bg-yellow-900/20 border-yellow-500/50 text-yellow-400' :
+             'bg-red-900/20 border-red-500/50 text-red-400'
+           }`}>
+              <div className={`w-2 h-2 rounded-full ${connectionState === 'connected' ? 'animate-pulse bg-green-500' : 'bg-current'}`} />
+              <span className="text-[10px] font-black uppercase tracking-tighter">{connectionState}</span>
+           </div>
+        </div>
       </div>
     </header>
   );
 }
 
 function AppShell() {
-  const [metrics, setMetrics] = useState(null);
-  const [alerts, setAlerts] = useState([]);
-  const [wsConnected, setWsConnected] = useState(false);
-  const wsRef = useRef(null);
-  const metricsHistoryRef = useRef([]);
-
-  const connectWs = () => {
-    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const ws = new WebSocket(`${proto}://${window.location.host}/ws/live`);
-
-    ws.onopen = () => {
-      setWsConnected(true);
-      ws.send('ping');
-    };
-
-    ws.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        setMetrics(data);
-        metricsHistoryRef.current = [...metricsHistoryRef.current.slice(-59), data];
-      } catch {}
-    };
-
-    ws.onclose = () => {
-      setWsConnected(false);
-      setTimeout(connectWs, 3000);
-    };
-
-    ws.onerror = () => {
-      ws.close();
-    };
-
-    wsRef.current = ws;
-  };
-
-  useEffect(() => {
-    connectWs();
-
-    const pollMetrics = async () => {
-      try {
-        const r = await fetch(`${API_BASE}/api/metrics`);
-        if (r.ok) {
-          const data = await r.json();
-          setMetrics(data);
-          metricsHistoryRef.current = [...metricsHistoryRef.current.slice(-59), data];
-        }
-      } catch {}
-    };
-
-    const pollAlerts = async () => {
-      try {
-        const r = await fetch(`${API_BASE}/api/alerts`);
-        const d = await r.json();
-        setAlerts(d.alerts || []);
-      } catch {}
-    };
-
-    pollMetrics();
-    pollAlerts();
-    const tMetrics = setInterval(pollMetrics, 3000);
-    const tAlerts = setInterval(pollAlerts, 10000);
-
-    return () => {
-      clearInterval(tMetrics);
-      clearInterval(tAlerts);
-      if (wsRef.current) wsRef.current.close();
-    };
-  }, []);
-
-  const alertCount = alerts.length;
-
   return (
     <div className="app-shell">
-      <Topbar metrics={metrics} alertCount={alertCount} wsConnected={wsConnected} />
+      <Topbar />
       <div className="app-body">
-        <Sidebar alertCount={alertCount} />
+        <Sidebar />
         <main className="main-content">
           <Routes>
-            <Route path="/" element={<Dashboard metrics={metrics} metricsHistory={metricsHistoryRef} alerts={alerts} apiBase={API_BASE} />} />
-            <Route path="/servers" element={<Servers apiBase={API_BASE} />} />
-            <Route path="/alerts" element={<AlertsPage alerts={alerts} apiBase={API_BASE} />} />
-            <Route path="/metrics" element={<Metrics metrics={metrics} metricsHistory={metricsHistoryRef} apiBase={API_BASE} />} />
-            <Route path="/ai-predict" element={<AiPredict apiBase={API_BASE} />} />
-            <Route path="/logs" element={<Logs apiBase={API_BASE} />} />
-            <Route path="/settings" element={<Settings apiBase={API_BASE} />} />
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/servers" element={<Servers />} />
+            <Route path="/alerts" element={<AlertsPage />} />
+            <Route path="/metrics" element={<Metrics />} />
+            <Route path="/ai-predict" element={<AiPredict />} />
+            <Route path="/ai-copilot" element={<AiCopilot />} />
+            <Route path="/infra-map" element={<InfraMap />} />
+            <Route path="/incident-timeline" element={<IncidentTimeline />} />
+            <Route path="/cost-optimizer" element={<CostOptimizer />} />
+            <Route path="/logs" element={<Logs />} />
+            <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>
       </div>
@@ -179,8 +134,18 @@ function AppShell() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AppShell />
-    </BrowserRouter>
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/*" element={
+            <ProtectedRoute>
+              <AppShell />
+            </ProtectedRoute>
+          } />
+        </Routes>
+        <ToastContainer theme="dark" position="bottom-right" />
+      </BrowserRouter>
+    </AuthProvider>
   );
 }

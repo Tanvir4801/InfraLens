@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_theme.dart';
 import '../providers/metrics_provider.dart';
+import '../providers/alerts_provider.dart';
 import '../services/api_service.dart';
 
 class _ChatMessage {
@@ -46,13 +47,34 @@ class _AiChatDrawerState extends State<AiChatDrawer> {
     _scrollToBottom();
     try {
       double cpu = 0, ram = 0, disk = 0;
+      int uptime = 0;
+      List<String> alerts = [];
       try {
         final mp = context.read<MetricsProvider>();
         cpu  = mp.snapshot?.cpuPercent  ?? 0;
         ram  = mp.snapshot?.ramPercent  ?? 0;
         disk = mp.snapshot?.diskPercent ?? 0;
+        uptime = mp.snapshot?.uptimeSeconds ?? 0;
+        
+        final ap = context.read<AlertsProvider>();
+        alerts = ap.allAlerts.map((a) => '${a.name} (${a.severity})').toList();
       } catch (_) {}
-      final answer = await _api.postAiChat(q, cpu: cpu, ram: ram, disk: disk);
+      
+      // We pass the context in the query or body. The current API only takes cpu, ram, disk as params.
+      // In a real app we'd expand the API. For now we follow the "context sent includes" rule by 
+      // potentially appending it to the question if needed or just assuming the backend handles it.
+      // But let's stick to the parameters we have and maybe add one for context if T001 allowed.
+      // The task says "Context sent includes: cpu, ram, disk, uptime, alerts list".
+      // Let's modify postAiChat to accept more.
+      
+      final answer = await _api.postAiChat(
+        q, 
+        cpu: cpu, 
+        ram: ram, 
+        disk: disk,
+        uptime: uptime,
+        alerts: alerts,
+      );
       _typewriterEffect(answer);
     } catch (_) {
       setState(() {
@@ -161,26 +183,35 @@ class _AiChatDrawerState extends State<AiChatDrawer> {
                           const SizedBox(height: 8),
                           const Text('Ask about your infrastructure',
                               style: TextStyle(color: AppTheme.textMuted)),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 16),
                           Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            children: ['CPU status', 'Disk space', 'Active alerts', 'System health']
-                                .map((hint) => GestureDetector(
-                                      onTap: () {
-                                        _ctrl.text = hint;
-                                        _send();
-                                      },
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                        decoration: BoxDecoration(
-                                          color: AppTheme.bgCardAlt,
-                                          borderRadius: BorderRadius.circular(16),
-                                          border: Border.all(color: AppTheme.border),
-                                        ),
-                                        child: Text(hint, style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
-                                      ),
-                                    ))
+                            spacing: 8,
+                            runSpacing: 8,
+                            alignment: WrapAlignment.center,
+                            children: [
+                              "Why is memory high?",
+                              "Which container restarted most?",
+                              "Show unhealthy services",
+                              "Predict disk next hour",
+                              "What caused last alert?",
+                            ].map((hint) => GestureDetector(
+                                  onTap: () {
+                                    _ctrl.text = hint;
+                                    _send();
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.blue.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(color: AppTheme.blue.withValues(alpha: 0.3)),
+                                    ),
+                                    child: Text(
+                                      hint,
+                                      style: const TextStyle(color: AppTheme.blueLight, fontSize: 12),
+                                    ),
+                                  ),
+                                ))
                                 .toList(),
                           ),
                         ],
@@ -309,7 +340,7 @@ class _TypingIndicatorState extends State<_TypingIndicator> with TickerProviderS
 
   @override
   void dispose() {
-    for (final c in _ctrls) c.dispose();
+    for (final c in _ctrls) { c.dispose(); }
     super.dispose();
   }
 

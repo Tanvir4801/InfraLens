@@ -1,0 +1,313 @@
+You are upgrading the InfraLens React web dashboard from a demo with static data into a production-grade AI-powered DevOps monitoring platform.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+HARDCODED BACKEND
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MAC_IP = '10.194.193.201'
+All API calls use: http://10.194.193.201:8000
+WebSocket:        ws://10.194.193.201:8000/ws/live
+Prometheus:       http://10.194.193.201:9090
+Grafana:          http://10.194.193.201:3000
+Alertmanager:     http://10.194.193.201:9093
+
+Create src/config/constants.js:
+  export const API_BASE = 'http://10.194.193.201:8000';
+  export const WS_URL   = 'ws://10.194.193.201:8000/ws/live';
+  export const PROMETHEUS_URL = 'http://10.194.193.201:9090';
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 1 — REMOVE ALL MOCK DATA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Search entire codebase for hardcoded values:
+  - Any array like [{cpu: 45, ram: 60}]
+  - Any setTimeout with fake data
+  - Any Math.random() metric generation
+  - Any static alert arrays
+Delete all of it. Replace with real API hooks.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 2 — API SERVICE LAYER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Create src/services/api.js with axios:
+
+export const fetchMetrics = () =>
+  axios.get(`${API_BASE}/api/metrics`);
+
+export const fetchServers = () =>
+  axios.get(`${API_BASE}/api/servers`);
+
+export const fetchAlerts = () =>
+  axios.get(`${API_BASE}/api/alerts`);
+
+export const fetchPrediction = () =>
+  axios.get(`${API_BASE}/api/predict`);
+
+export const fetchContainerLogs = (id) =>
+  axios.get(`${API_BASE}/api/containers/${id}/logs`);
+
+export const restartContainer = (id) =>
+  axios.post(`${API_BASE}/api/containers/${id}/restart`);
+
+export const fetchIncidentTimeline = () =>
+  axios.get(`${API_BASE}/api/incidents`);
+
+export const aiChat = (question, context) =>
+  axios.get(`${API_BASE}/api/chat`,
+    {params: {q: question, ...context}});
+
+export const generateRCA = (alert, metrics) =>
+  axios.post(`${API_BASE}/api/incident-report`,
+    {alert, metrics});
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 3 — WEBSOCKET HOOK
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Create src/hooks/useWebSocket.js:
+  - Connects to ws://10.194.193.201:8000/ws/live
+  - Auto-reconnects with backoff
+  - Returns {metrics, connectionState}
+  - connectionState: 'connected'|'reconnecting'|'offline'
+  - Maintains rollingHistory: last 20 CPU values
+
+Use in Dashboard via: const {metrics, connectionState}
+  = useWebSocket();
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 4 — DASHBOARD PAGE (upgrade)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/pages/Dashboard.jsx — all real data:
+
+Top bar: connection status pill (green/amber/red)
+  + "X containers running" badge
+  + auto-refresh every 5s indicator
+
+Stat cards (4): CPU%, RAM%, Disk%, Uptime
+  All from fetchMetrics() response.
+  Color: green<60, amber<80, red>=80
+
+CPU sparkline: Recharts LineChart
+  - 20 points from WebSocket rollingHistory
+  - minY:0, maxY:100, no axes
+  - Green line + subtle area fill
+
+AI Prediction banner: fetches /api/predict
+  - If will_overload: red banner
+    "CPU overload predicted in X min · Confidence: X%"
+    "Recommended: Scale deployment"
+  - Else: blue banner "System stable"
+
+Server health list: fetches /api/servers every 10s
+  - Status dot (green/amber/red by status field)
+  - Server name + role
+  - CPU progress bar (color by CPU%)
+  - "Restart" button → calls restartContainer(id)
+    with confirm dialog first
+
+Active alerts list: fetches /api/alerts every 30s
+  - Severity badge (red/amber)
+  - Alert name + fired X mins ago
+  - "Generate RCA" button per alert
+
+Network row: IN: X KB/s | OUT: X KB/s
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 5 — SERVERS / CONTAINERS PAGE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/pages/Servers.jsx — real Docker container data:
+
+Table with columns:
+  Status dot | Name | Role | IP | CPU bar |
+  RAM bar | Disk | Uptime | Actions
+
+Actions column:
+  "Restart" button → POST /api/containers/{id}/restart
+    → confirm modal → loading state → success/error toast
+  "Logs" button → opens LogsModal
+
+LogsModal:
+  Fetches GET /api/containers/{id}/logs
+  Shows in <pre> dark terminal style
+  Search bar filters lines
+  "Download .log" button
+
+Cluster summary row at top:
+  Total: N | Healthy: N | Warning: N | Down: N
+  Filter buttons: clicking filters table
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 6 — ALERTS PAGE (upgrade)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/pages/Alerts.jsx — real Alertmanager data:
+
+Filter tabs: All | Critical | Warning | Acknowledged
+
+Alert cards with:
+  Left border (red/amber by severity)
+  Alert name (bold) + source + fired timestamp
+  Description text
+  "Generate AI RCA" button:
+    → POST /api/incident-report
+    → shows loading spinner
+    → displays RCA in expandable card below alert
+    → RCA cached per alert ID
+
+Auto-refresh every 30s with "Updated X secs ago" label.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 7 — AI COPILOT PAGE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/pages/AiCopilot.jsx — DevOps chat interface:
+
+Layout: sidebar chat history + main chat area
+
+Suggested question buttons:
+  "Why is memory high?"
+  "Which container restarted most?"
+  "Show unhealthy services"
+  "Predict disk usage next hour"
+  "What caused the last alert?"
+
+Each button pre-fills + auto-sends the question.
+
+Chat bubbles:
+  User: right-aligned, dark bg
+  AI: left-aligned, blue-tinted bg, robot icon
+  Typewriter effect: stream chars with setInterval(30ms)
+
+Context object sent with every message:
+  {cpu, ram, disk, alerts, uptime, containers}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 8 — AI PREDICT PAGE (upgrade)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/pages/Predict.jsx — real Prophet data:
+
+Prediction card: will_overload, confidence bar,
+  predicted_max_cpu, minutes_until_overload countdown
+
+Recharts ComposedChart:
+  - Actual CPU: green solid AreaChart
+  - Forecast: blue dashed Line
+  - Threshold 85%: red ReferenceLine
+  - Legend below
+
+Anomaly timeline: last 10 anomaly events as vertical
+  timeline. Each event: timestamp + metric + AI summary.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 9 — INFRASTRUCTURE MAP PAGE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/pages/InfraMap.jsx:
+
+Visual topology using React Flow (npm install reactflow):
+  Nodes: each Docker container + K8s pod + service
+  Edges: connections between services
+  Node colors: green=healthy, amber=warning, red=down
+  Clicking node: shows sidebar with container details
+  Auto-layout using dagre algorithm
+
+Data from GET /api/topology:
+  Returns {nodes: [...], edges: [...]}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 10 — LOGS PAGE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/pages/Logs.jsx:
+
+Left sidebar: list of containers/pods (select which to view)
+Main area: log output in terminal style (dark, monospace)
+  - Real-time tail: WebSocket or polling every 2s
+  - Search bar: highlights matching lines in yellow
+  - Filter by level: ALL | ERROR | WARN | INFO
+  - "Download .log" button
+  - Line count + "last updated X secs ago"
+
+Data from GET /api/containers/{id}/logs?tail=200
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 11 — INCIDENT TIMELINE PAGE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/pages/IncidentTimeline.jsx:
+
+Vertical timeline (newest at top):
+  Event types with icons:
+    🔴 Alert fired
+    🔵 Container restarted
+    🟡 Deployment
+    ⚪ Pod failure
+  Each event: timestamp, description, affected service
+  Clicking event: expands to show AI-generated summary
+
+Data from GET /api/incidents (FastAPI aggregates
+  Alertmanager history + Docker events)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 12 — JWT AUTH
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/pages/Login.jsx:
+  Dark login form: username + password
+  POST /api/auth/login → returns {access_token}
+  Store token in localStorage
+  Add Authorization: Bearer header to all axios calls
+
+src/context/AuthContext.jsx:
+  Roles: admin | operator | viewer
+  Admin: can restart containers, generate RCA
+  Operator: can view + acknowledge alerts
+  Viewer: read-only
+  ProtectedRoute component wraps all pages
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 13 — UNIQUE FEATURES (web)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. ONE-CLICK RECOVERY
+   Every container card has "Restart" button.
+   Confirm modal: "Restart container {name}?"
+   POST /api/containers/{id}/restart
+   Live status update: "Restarting..." → "Running"
+
+2. AI ROOT CAUSE ANALYSIS
+   On Alerts page, "Generate RCA" per alert.
+   POST /api/incident-report
+   Shows expandable card:
+   "CPU spike likely caused by backend deployment."
+   Cached per alert ID using React useMemo.
+
+3. COST OPTIMIZER PAGE
+   src/pages/CostOptimizer.jsx
+   Fetches /api/cost-analysis
+   Shows table: container | avg CPU | avg RAM |
+     recommendation | potential saving
+   Highlights containers averaging <10% CPU with
+   suggestion: "Consider reducing CPU limit"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 14 — PROFESSIONAL POLISH
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Dark mode already done — keep it.
+2. Auto-refresh: each page shows "Updated Xs ago"
+   with rotating sync icon.
+3. Export button on Dashboard:
+   "Export CSV" → downloads metrics as CSV
+   "Export PDF" → uses jspdf to generate report
+4. Responsive: mobile breakpoints for all pages
+   (hamburger menu on <768px)
+5. Toast notifications (react-toastify):
+   Green toast on container restart success
+   Red toast on API error
+   Amber toast on new critical alert
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PACKAGES TO INSTALL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+npm install axios recharts reactflow dagre
+  react-toastify jspdf react-router-dom
+  @heroicons/react date-fns
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DELIVERABLE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Generate ALL files completely. No TODOs. No placeholders.
+Every component must use real API data.
+All charts use Recharts with real data arrays.
+App must run with: npm start

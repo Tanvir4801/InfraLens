@@ -17,6 +17,7 @@ class _ServersScreenState extends State<ServersScreen> {
   final _search = TextEditingController();
   String _sort  = 'cpu_desc';
   bool _spinning = false;
+  String? _statusFilter;
 
   @override
   void dispose() {
@@ -27,6 +28,9 @@ class _ServersScreenState extends State<ServersScreen> {
   List<ServerInfo> _filtered(List<ServerInfo> servers) {
     var list = servers.where((s) =>
         s.name.toLowerCase().contains(_search.text.toLowerCase())).toList();
+    if (_statusFilter != null) {
+      list = list.where((s) => s.status.toLowerCase() == _statusFilter!.toLowerCase()).toList();
+    }
     switch (_sort) {
       case 'cpu_asc':  list.sort((a, b) => a.cpu.compareTo(b.cpu)); break;
       case 'cpu_desc': list.sort((a, b) => b.cpu.compareTo(a.cpu)); break;
@@ -63,9 +67,53 @@ class _ServersScreenState extends State<ServersScreen> {
           ),
           body: Column(
             children: [
+              // Cluster summary card
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppTheme.bgCard,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.border),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _SummaryStat(
+                        label: 'Total',
+                        value: provider.servers.length,
+                        onTap: () => setState(() => _statusFilter = null),
+                        active: _statusFilter == null,
+                      ),
+                      _SummaryStat(
+                        label: 'Healthy',
+                        value: provider.servers.where((s) => s.status.toLowerCase() == 'healthy').length,
+                        color: AppTheme.green,
+                        onTap: () => setState(() => _statusFilter = 'healthy'),
+                        active: _statusFilter == 'healthy',
+                      ),
+                      _SummaryStat(
+                        label: 'Warning',
+                        value: provider.servers.where((s) => s.status.toLowerCase() == 'warning').length,
+                        color: AppTheme.amber,
+                        onTap: () => setState(() => _statusFilter = 'warning'),
+                        active: _statusFilter == 'warning',
+                      ),
+                      _SummaryStat(
+                        label: 'Down',
+                        value: provider.servers.where((s) => s.status.toLowerCase() == 'down').length,
+                        color: AppTheme.red,
+                        onTap: () => setState(() => _statusFilter = 'down'),
+                        active: _statusFilter == 'down',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
               // Search
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: TextField(
                   controller: _search,
                   onChanged: (_) => setState(() {}),
@@ -123,6 +171,51 @@ class _ServersScreenState extends State<ServersScreen> {
           ),
         );
       },
+    );
+  }
+}
+
+class _SummaryStat extends StatelessWidget {
+  final String label;
+  final int value;
+  final Color? color;
+  final VoidCallback onTap;
+  final bool active;
+
+  const _SummaryStat({
+    required this.label,
+    required this.value,
+    this.color,
+    required this.onTap,
+    required this.active,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Text(
+            '$value',
+            style: TextStyle(
+              color: color ?? AppTheme.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              decoration: active ? TextDecoration.underline : null,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: AppTheme.textMuted,
+              fontSize: 12,
+              fontWeight: active ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -93,7 +93,7 @@ class AiPredictScreen extends StatelessWidget {
                                     crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
                                       Text(
-                                        '${(result.confidence * 100).toStringAsFixed(0)}% confidence',
+                                        '${(result.confidence * 100).clamp(50, 100).toStringAsFixed(0)}% confidence',
                                         style: const TextStyle(color: AppTheme.textMuted, fontSize: 11),
                                       ),
                                       const SizedBox(height: 4),
@@ -102,7 +102,7 @@ class AiPredictScreen extends StatelessWidget {
                                         child: ClipRRect(
                                           borderRadius: BorderRadius.circular(4),
                                           child: LinearProgressIndicator(
-                                            value: result.confidence,
+                                            value: result.confidence.clamp(0.5, 1.0),
                                             backgroundColor: AppTheme.border,
                                             valueColor: AlwaysStoppedAnimation<Color>(
                                               result.confidence > 0.8 ? AppTheme.green : AppTheme.amber,
@@ -115,6 +115,33 @@ class AiPredictScreen extends StatelessWidget {
                                   ),
                                 ],
                               ),
+                              if (result.dataPointsUsed < 10) ...[
+                                const SizedBox(height: 12),
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.blue.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: AppTheme.blue.withValues(alpha: 0.4)),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Collecting data... ${result.dataPointsUsed}/10 readings',
+                                        style: const TextStyle(color: AppTheme.blueLight, fontSize: 13, fontWeight: FontWeight.w600),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      LinearProgressIndicator(
+                                        value: result.dataPointsUsed / 10,
+                                        backgroundColor: AppTheme.blue.withValues(alpha: 0.1),
+                                        valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.blue),
+                                        minHeight: 4,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                               const SizedBox(height: 14),
                               if (result.willOverload) ...[
                                 Row(
@@ -238,50 +265,71 @@ class _ForecastChart extends StatelessWidget {
 
     final maxX = (offset + forecasts.length - 1).clamp(1.0, double.infinity);
 
-    return LineChart(
-      LineChartData(
-        gridData: FlGridData(
-          show: true,
-          getDrawingHorizontalLine: (_) => FlLine(color: AppTheme.border.withValues(alpha: 0.4), strokeWidth: 0.5),
-          getDrawingVerticalLine:   (_) => const FlLine(color: Colors.transparent),
-        ),
-        titlesData: const FlTitlesData(show: false),
-        borderData: FlBorderData(show: false),
-        lineTouchData: const LineTouchData(enabled: false),
-        minY: 0,
-        maxY: 100,
-        minX: 0,
-        maxX: maxX,
-        extraLinesData: ExtraLinesData(
-          horizontalLines: [
-            HorizontalLine(
-              y: 85,
-              color: AppTheme.red.withValues(alpha: 0.6),
-              strokeWidth: 1.5,
-              dashArray: [4, 3],
+    return ClipRect(
+      child: SizedBox(
+        height: 200,
+        child: LineChart(
+          LineChartData(
+            gridData: FlGridData(
+              show: true,
+              getDrawingHorizontalLine: (_) => FlLine(color: AppTheme.border.withValues(alpha: 0.4), strokeWidth: 0.5),
+              getDrawingVerticalLine:   (_) => const FlLine(color: Colors.transparent),
             ),
-          ],
-        ),
-        lineBarsData: [
-          LineChartBarData(
-            spots: hSpots,
-            color: AppTheme.green,
-            barWidth: 2,
-            isCurved: true,
-            dotData: const FlDotData(show: false),
-            belowBarData: BarAreaData(show: true, color: AppTheme.green.withValues(alpha: 0.08)),
+            titlesData: const FlTitlesData(
+              show: true,
+              rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              leftTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: 36,
+                ),
+              ),
+              bottomTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: 22,
+                ),
+              ),
+            ),
+            borderData: FlBorderData(show: false),
+            lineTouchData: const LineTouchData(enabled: false),
+            minY: 0,
+            maxY: 100,
+            minX: 0,
+            maxX: maxX,
+            extraLinesData: ExtraLinesData(
+              horizontalLines: [
+                HorizontalLine(
+                  y: 85,
+                  color: AppTheme.red.withValues(alpha: 0.6),
+                  strokeWidth: 1.5,
+                  dashArray: [4, 3],
+                ),
+              ],
+            ),
+            lineBarsData: [
+              LineChartBarData(
+                spots: hSpots,
+                color: AppTheme.green,
+                barWidth: 2,
+                isCurved: true,
+                dotData: const FlDotData(show: false),
+                belowBarData: BarAreaData(show: true, color: AppTheme.green.withValues(alpha: 0.08)),
+              ),
+              if (fSpots.isNotEmpty)
+                LineChartBarData(
+                  spots: fSpots,
+                  color: AppTheme.blue,
+                  barWidth: 2,
+                  isCurved: true,
+                  dashArray: [5, 3],
+                  dotData: const FlDotData(show: false),
+                  belowBarData: BarAreaData(show: true, color: AppTheme.blue.withValues(alpha: 0.06)),
+                ),
+            ],
           ),
-          if (fSpots.isNotEmpty)
-            LineChartBarData(
-              spots: fSpots,
-              color: AppTheme.blue,
-              barWidth: 2,
-              isCurved: true,
-              dashArray: [5, 3],
-              dotData: const FlDotData(show: false),
-              belowBarData: BarAreaData(show: true, color: AppTheme.blue.withValues(alpha: 0.06)),
-            ),
-        ],
+        ),
       ),
     );
   }

@@ -1,0 +1,271 @@
+You are upgrading InfraLens Flutter mobile app to a production-grade DevOps monitoring platform. Fix all existing bugs and add real data + unique features.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+HARDCODED BACKEND (DO NOT USE localhost)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MAC_IP = '10.194.193.201'
+BASE_URL = 'http://10.194.193.201:8000'
+WS_URL   = 'ws://10.194.193.201:8000'
+
+Use these everywhere. Never use 'localhost' or '127.0.0.1'.
+Also update flutter_app/.env:
+  BASE_URL=http://10.194.193.201:8000
+  WS_URL=ws://10.194.193.201:8000
+  GEMINI_API_KEY=your_key_here
+  GROQ_API_KEY=your_key_here
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BUG FIX 1 — CPU Sparkline flat line
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: lib/widgets/sparkline_chart.dart
+Problem: Chart shows flat line at bottom.
+Fix: Set explicit Y axis range in LineChartData:
+  minY: 0,
+  maxY: 100,
+  minX: 0,
+  maxX: (history.length - 1).toDouble(),
+  titlesData: FlTitlesData(show: false),
+  gridData: FlGridData(show: false),
+  borderData: FlBorderData(show: false),
+Map history correctly:
+  spots: history.asMap().entries
+    .map((e) => FlSpot(e.key.toDouble(), e.value.toDouble()))
+    .toList()
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BUG FIX 2 — Chart overflow 4px
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: lib/screens/ai_predict_screen.dart
+Problem: "OVERFLOWED BY 4.0 PIXELS" on forecast chart.
+Fix: Wrap LineChart in ClipRect + SizedBox(height:180):
+  ClipRect(
+    child: SizedBox(
+      height: 180,
+      child: LineChart(LineChartData(
+        titlesData: FlTitlesData(
+          leftTitles: AxisTitles(sideTitles:
+            SideTitles(showTitles:true, reservedSize:36)),
+          bottomTitles: AxisTitles(sideTitles:
+            SideTitles(showTitles:true, reservedSize:22)),
+          rightTitles: AxisTitles(sideTitles:
+            SideTitles(showTitles:false)),
+          topTitles: AxisTitles(sideTitles:
+            SideTitles(showTitles:false)),
+        ),
+      )),
+    ),
+  )
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BUG FIX 3 — Server dot wrong color
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: lib/widgets/server_card.dart
+Problem: node-2 shows red dot at 73% CPU (should be amber).
+Fix: Dot color = server.status field, bar color = CPU%:
+  Color _dotColor(String status) {
+    if (status == 'down') return AppTheme.red;
+    if (status == 'warning') return AppTheme.amber;
+    return AppTheme.green;
+  }
+  Color _barColor(double cpu) =>
+    cpu >= 80 ? AppTheme.red :
+    cpu >= 60 ? AppTheme.amber : AppTheme.green;
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BUG FIX 4 — WebSocket crash on connection refused
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: lib/services/websocket_service.dart
+Wrap _connect() in try/catch. On any error or done:
+  - Set _state = WsState.disconnected
+  - Call _scheduleReconnect()
+Backoff: 1s→2s→4s→8s→16s→30s (cap at 30s)
+Never crash — always reconnect silently.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BUG FIX 5 — AI Predict low confidence
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: lib/screens/ai_predict_screen.dart
+If prediction.dataPointsUsed < 10, show:
+  Container with blue border:
+  "Collecting data... X/10 readings"
+  LinearProgressIndicator(value: x/10)
+  "Predictions available after 10 readings"
+Else show normal prediction card.
+Floor confidence display at 50% for stable systems.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REAL DATA — REPLACE ALL MOCK DATA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: lib/services/api_service.dart
+
+Replace ALL hardcoded/mock values with real API calls:
+
+fetchMetrics() → GET http://10.194.193.201:8000/api/metrics
+  Returns: {cpu_percent, ram_percent, disk_percent,
+            network_in_kbps, network_out_kbps,
+            uptime_seconds, container_count}
+
+fetchServers() → GET http://10.194.193.201:8000/api/servers
+  Returns: [{name, ip, role, cpu, ram, disk,
+             uptime, status: healthy/warning/down}]
+
+fetchAlerts() → GET http://10.194.193.201:8000/api/alerts
+  Returns: [{id, name, severity, description,
+             fired_at, source}]
+
+fetchPrediction() → GET http://10.194.193.201:8000/api/predict
+  Returns: {will_overload, predicted_max_cpu,
+            minutes_until_overload, confidence,
+            data_points_used, forecast: [...]}
+
+fetchServerHistory(name) →
+  GET http://10.194.193.201:8000/api/servers/{name}/history
+  Returns: [{timestamp, cpu, ram}]
+
+postIncidentReport(alert) →
+  POST http://10.194.193.201:8000/api/incident-report
+  Body: {alert: {...}, metrics: {cpu_history, ram_history}}
+  Returns: {report: "text...", model: "gemini-1.5-flash"}
+
+postAiChat(question, metrics) →
+  GET http://10.194.193.201:8000/api/chat?q={question}
+  Returns: {response: "text..."}
+
+acknowledgeAlert(id) →
+  PATCH http://10.194.193.201:8000/api/alerts/{id}/acknowledge
+
+restartContainer(id) →
+  POST http://10.194.193.201:8000/api/containers/{id}/restart
+  Returns: {success: bool, message: string}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+UNIQUE FEATURE 1 — One-Click Recovery
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: lib/screens/servers_screen.dart +
+      lib/widgets/server_card.dart
+
+Add GestureDetector onLongPress on each ServerCard.
+On long press → showModalBottomSheet with:
+  Title: "Actions — {server.name}"
+  ListTile: restart icon + "Restart Container"
+    → calls ApiService.restartContainer(server.id)
+    → shows CircularProgressIndicator while loading
+    → on success: SnackBar "Container restarted ✓" (green)
+    → on failure: SnackBar "Failed: {error}" (red)
+  ListTile: info icon + "View Logs"
+    → opens LogsBottomSheet (scrollable container logs
+       from GET /api/containers/{id}/logs)
+  ListTile: close icon + "Cancel"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+UNIQUE FEATURE 2 — AI Root Cause Analysis
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: lib/screens/alerts_screen.dart
+
+When alerts load AND any alert is critical:
+  - Automatically call POST /api/incident-report with
+    that alert + last 30min metrics
+  - Show RCA card ABOVE the alert list:
+    Container (blue-tinted bg, border):
+    Row: sparkles icon + "AI Root Cause Analysis"
+    Text: response from API (e.g. "CPU spike likely
+          caused by backend container deployment.")
+    "Generated by Gemini 1.5 Flash" footer
+  - Cache RCA per alert ID in a Map<String, String>
+    so it doesn't re-fetch on every rebuild
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+UNIQUE FEATURE 3 — DevOps Copilot Chat
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: lib/screens/ai_predict_screen.dart (upgrade Ask AI)
+
+Replace plain text input with full Copilot experience:
+
+Suggested question chips (show above input):
+  "Why is memory high?"
+  "Which container restarted most?"
+  "Show unhealthy services"
+  "Predict disk usage next hour"
+  "What caused last alert?"
+
+Tapping a chip → auto-fills input + auto-sends.
+
+Chat history:
+  User bubble: right-aligned, bgCardAlt color
+  AI bubble: left-aligned, blue-tinted bg,
+    small robot avatar icon, monospace font
+  Typewriter effect on AI response:
+    Timer.periodic(30ms) appends chars one by one
+
+Context sent with every question:
+  {
+    "question": user_input,
+    "context": {
+      "cpu": current_cpu,
+      "ram": current_ram,
+      "disk": current_disk,
+      "alerts": [alert names list],
+      "uptime": uptime_string
+    }
+  }
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DASHBOARD IMPROVEMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+lib/screens/dashboard_screen.dart:
+
+1. Add network row below uptime card:
+   Row: ↓ IN: X KB/s  |  ↑ OUT: X KB/s
+   Data from metrics.network_in_kbps / network_out_kbps
+
+2. Add container count badge in AppBar subtitle:
+   "{container_count} containers running"
+
+3. Health score tooltip: tap the 93/score number
+   → shows AlertDialog explaining how score is computed:
+   "CPU(40%) + RAM(30%) + Disk(20%) + Alerts(10%)"
+
+4. Connection status pill:
+   Green "Connected" → amber pulsing "Reconnecting..."
+   → red "Offline · cached data"
+   Use AnimatedContainer for smooth color transition.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SERVERS SCREEN IMPROVEMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+lib/screens/servers_screen.dart:
+
+1. Add cluster summary card at bottom:
+   Row: Total: N | Healthy: N | Warning: N | Down: N
+   Tapping each stat filters the list to that status.
+
+2. Add pulse animation on healthy server dots:
+   AnimationController repeat, ScaleTransition
+   1.0 → 1.5 → 1.0, duration 1500ms, opacity 0.6→0
+   Only animate when server.status == 'healthy'
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+iOS SPECIFIC FIXES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. ios/Runner/Info.plist must contain:
+   <key>NSAppTransportSecurity</key>
+   <dict>
+     <key>NSAllowsArbitraryLoads</key>
+     <true/>
+   </dict>
+
+2. All HTTP calls use http://10.194.193.201:8000
+   NOT https (no SSL cert on local backend)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REPLIT BUILD INSTRUCTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Target: Flutter Web for Replit preview
+  flutter run -d web-server --web-port=3000
+    --web-hostname=0.0.0.0
+
+For iOS physical device:
+  flutter run --release
+
+Generate ALL files completely. No TODOs. No placeholders.
+Every file must be complete compilable Dart/Flutter code.

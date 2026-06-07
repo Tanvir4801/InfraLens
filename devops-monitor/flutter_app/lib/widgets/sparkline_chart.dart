@@ -22,7 +22,7 @@ class SparklineChart extends StatelessWidget {
     final color = lineColor ?? AppTheme.green;
     final spots = List.generate(
       data.length,
-      (i) => FlSpot(i.toDouble(), data[i].clamp(0.0, 100.0)),
+      (i) => FlSpot(i.toDouble(), data[i].toDouble()),
     );
     return SizedBox(
       height: height,

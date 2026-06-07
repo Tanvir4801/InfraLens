@@ -29,12 +29,16 @@ class WebSocketService {
     if (_disposed) return;
     _setState(WsState.connecting);
     try {
-      final uri = Uri.parse('${AppConstants.wsUrl}/ws/live');
+      final uri = Uri.parse('${AppConstants.wsBaseUrl}/ws/live');
       _channel = WebSocketChannel.connect(uri);
       _channel!.stream.listen(
         _onData,
-        onError: _onError,
-        onDone:  _onDone,
+        onError: (e) {
+          _scheduleReconnect();
+        },
+        onDone: () {
+          _scheduleReconnect();
+        },
         cancelOnError: false,
       );
       _setState(WsState.connected);
@@ -51,9 +55,6 @@ class WebSocketService {
       _metricsCtrl.add(MetricsSnapshot.fromJson(json));
     } catch (_) {}
   }
-
-  void _onError(Object _) => _scheduleReconnect();
-  void _onDone()          => _scheduleReconnect();
 
   void _scheduleReconnect() {
     if (_disposed) return;

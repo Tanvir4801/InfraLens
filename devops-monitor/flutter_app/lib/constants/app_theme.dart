@@ -14,6 +14,7 @@ class AppTheme {
   static const red         = Color(0xFFE24B4A);
   static const blue        = Color(0xFF378ADD);
   static const blueLight   = Color(0xFF85B7EB);
+  static const textSecondary = Color(0xFFb0b8c1);
 
   static Color getMetricColor(double pct) =>
       pct < 60 ? green : pct < 80 ? amber : red;

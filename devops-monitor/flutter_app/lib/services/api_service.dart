@@ -15,7 +15,7 @@ class ApiService {
   factory ApiService() => _instance;
   ApiService._();
 
-  String get _base => LocalStorageService.loadBackendUrl() ?? AppConstants.baseUrl;
+  String get _base => LocalStorageService.loadBackendUrl() ?? AppConstants.backendBaseUrl;
   bool   get _mock => LocalStorageService.loadMockDataEnabled();
 
   static const _timeout = Duration(seconds: 10);
@@ -132,6 +132,8 @@ class ApiService {
     double cpu = 0,
     double ram = 0,
     double disk = 0,
+    int uptime = 0,
+    List<String> alerts = const [],
   }) async {
     if (_mock) return MockDataService.postAiChat(question);
     try {
@@ -140,6 +142,8 @@ class ApiService {
         'cpu':  cpu.toStringAsFixed(1),
         'ram':  ram.toStringAsFixed(1),
         'disk': disk.toStringAsFixed(1),
+        'uptime': uptime.toString(),
+        'alerts': alerts.join(','),
       });
       final r = await http.get(uri).timeout(_timeout);
       if (r.statusCode == 200) {
