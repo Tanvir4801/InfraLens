@@ -56,7 +56,12 @@ class DashboardScreen extends StatelessWidget {
               : RefreshIndicator(
                   color: AppTheme.green,
                   backgroundColor: AppTheme.bgCard,
-                  onRefresh: () async {},
+                  onRefresh: () async {
+                    await context.read<MetricsProvider>().fetchNow();
+                    if (context.mounted) {
+                      await context.read<AlertsProvider>().fetch();
+                    }
+                  },
                   child: ListView(
                     padding: const EdgeInsets.only(bottom: 24),
                     children: [
@@ -95,7 +100,21 @@ class DashboardScreen extends StatelessWidget {
                             ),
                           );
                         },
-                        child: _Card(
+                        child: Container(
+                          margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [AppTheme.bgCard, AppTheme.bgCardAlt],
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: AppTheme.green.withValues(alpha: 0.3),
+                              width: 1,
+                            ),
+                          ),
                           child: Row(
                             children: [
                               Expanded(child: HealthScoreWidget(score: healthScore)),
@@ -104,11 +123,11 @@ class DashboardScreen extends StatelessWidget {
                                 child: Column(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    _StatRow(label: 'CPU',  value: '${snap.cpuPercent.toStringAsFixed(1)}%', color: AppTheme.getMetricColor(snap.cpuPercent)),
+                                    _StatRow(label: 'CPU',  value: snap.cpuPercent, color: AppTheme.getMetricColor(snap.cpuPercent)),
                                     const SizedBox(height: 6),
-                                    _StatRow(label: 'RAM',  value: '${snap.ramPercent.toStringAsFixed(1)}%', color: AppTheme.getMetricColor(snap.ramPercent)),
+                                    _StatRow(label: 'RAM',  value: snap.ramPercent, color: AppTheme.getMetricColor(snap.ramPercent)),
                                     const SizedBox(height: 6),
-                                    _StatRow(label: 'Disk', value: '${snap.diskPercent.toStringAsFixed(1)}%', color: AppTheme.getMetricColor(snap.diskPercent)),
+                                    _StatRow(label: 'Disk', value: snap.diskPercent, color: AppTheme.getMetricColor(snap.diskPercent)),
                                   ],
                                 ),
                               ),
@@ -313,7 +332,7 @@ class _Card extends StatelessWidget {
 
 class _StatRow extends StatelessWidget {
   final String label;
-  final String value;
+  final double value;
   final Color  color;
   const _StatRow({required this.label, required this.value, required this.color});
   @override
@@ -325,7 +344,14 @@ class _StatRow extends StatelessWidget {
         child: Text(label, style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
       ),
       const SizedBox(width: 6),
-      Text(value, style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.bold)),
+      AnimatedSwitcher(
+        duration: const Duration(milliseconds: 400),
+        child: Text(
+          '${value.toStringAsFixed(1)}%',
+          key: ValueKey('${label}_${value.toStringAsFixed(0)}'),
+          style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.bold),
+        ),
+      ),
     ],
   );
 }

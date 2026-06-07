@@ -8,9 +8,9 @@ import 'reactflow/dist/style.css';
 import { fetchTopology } from '../services/api';
 
 const nodeStyles = {
-  healthy: { background: '#065f46', color: '#fff', border: '1px solid #059669' },
-  warning: { background: '#92400e', color: '#fff', border: '1px solid #d97706' },
-  down: { background: '#991b1b', color: '#fff', border: '1px solid #dc2626' },
+  healthy: { background: 'rgba(22, 27, 34, 0.8)', color: '#fff', border: '1px solid #1db974', borderRadius: '12px', backdropFilter: 'blur(8px)', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' },
+  warning: { background: 'rgba(22, 27, 34, 0.8)', color: '#fff', border: '1px solid #f0883e', borderRadius: '12px', backdropFilter: 'blur(8px)', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' },
+  down: { background: 'rgba(22, 27, 34, 0.8)', color: '#fff', border: '1px solid #f85149', borderRadius: '12px', backdropFilter: 'blur(8px)', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' },
 };
 
 export default function InfraMap() {
@@ -25,15 +25,15 @@ export default function InfraMap() {
         const flowNodes = data.nodes.map((n, i) => ({
           id: n.id,
           data: { label: n.label, type: n.type, status: n.status },
-          position: { x: (i % 3) * 250, y: Math.floor(i / 3) * 150 },
+          position: { x: (i % 3) * 300, y: Math.floor(i / 3) * 200 },
           style: nodeStyles[n.status] || nodeStyles.healthy,
-          className: 'rounded-lg font-bold p-4'
+          className: 'font-bold p-4'
         }));
         setNodes(flowNodes);
         setEdges(data.edges.map(e => ({
           ...e,
           animated: true,
-          style: { stroke: '#4b5563' }
+          style: { stroke: '#4b5563', strokeWidth: 2 }
         })));
       } catch (err) {
         console.error(err);
@@ -47,7 +47,7 @@ export default function InfraMap() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-900 text-white overflow-hidden">
+    <div className="page-enter flex h-[calc(100vh-48px-48px)] bg-gray-900 text-white overflow-hidden rounded-xl border border-gray-800">
       <div className="flex-1 relative">
         <ReactFlow
           nodes={nodes}
@@ -55,10 +55,32 @@ export default function InfraMap() {
           onNodeClick={onNodeClick}
           fitView
         >
-          <Background color="#374151" gap={20} />
-          <Controls />
-          <MiniMap nodeColor={(n) => n.style?.background || '#eee'} />
+          <Background color="#374151" gap={20} variant="dots" />
+          <Controls className="bg-gray-800 border-gray-700 fill-white" />
+          <MiniMap 
+            nodeColor={(n) => {
+              if (n.data?.status === 'healthy') return '#1db974';
+              if (n.data?.status === 'warning') return '#f0883e';
+              if (n.data?.status === 'down') return '#f85149';
+              return '#30363d';
+            }} 
+            maskColor="rgba(0,0,0,0.6)"
+            className="bg-gray-800 border-gray-700"
+          />
         </ReactFlow>
+        
+        {/* Legend */}
+        <div className="absolute bottom-4 right-20 glass-card p-3 flex flex-col gap-2 text-[10px] font-bold uppercase tracking-widest z-10 border border-gray-700/50">
+           <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[#1db974]" /> Healthy
+           </div>
+           <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[#f0883e]" /> Warning
+           </div>
+           <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[#f85149]" /> Down
+           </div>
+        </div>
       </div>
       
       {selectedNode && (

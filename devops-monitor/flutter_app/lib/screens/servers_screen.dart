@@ -65,110 +65,131 @@ class _ServersScreenState extends State<ServersScreen> {
               ),
             ],
           ),
-          body: Column(
-            children: [
-              // Cluster summary card
-              Padding(
+      body: RefreshIndicator(
+        onRefresh: () => provider.fetch(),
+        color: AppTheme.green,
+        backgroundColor: AppTheme.bgCard,
+        child: Column(
+          children: [
+            // Cluster summary card
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Container(
                 padding: const EdgeInsets.all(16),
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: AppTheme.bgCard,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.border),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _SummaryStat(
-                        label: 'Total',
-                        value: provider.servers.length,
-                        onTap: () => setState(() => _statusFilter = null),
-                        active: _statusFilter == null,
-                      ),
-                      _SummaryStat(
-                        label: 'Healthy',
-                        value: provider.servers.where((s) => s.status.toLowerCase() == 'healthy').length,
-                        color: AppTheme.green,
-                        onTap: () => setState(() => _statusFilter = 'healthy'),
-                        active: _statusFilter == 'healthy',
-                      ),
-                      _SummaryStat(
-                        label: 'Warning',
-                        value: provider.servers.where((s) => s.status.toLowerCase() == 'warning').length,
-                        color: AppTheme.amber,
-                        onTap: () => setState(() => _statusFilter = 'warning'),
-                        active: _statusFilter == 'warning',
-                      ),
-                      _SummaryStat(
-                        label: 'Down',
-                        value: provider.servers.where((s) => s.status.toLowerCase() == 'down').length,
-                        color: AppTheme.red,
-                        onTap: () => setState(() => _statusFilter = 'down'),
-                        active: _statusFilter == 'down',
-                      ),
-                    ],
-                  ),
+                decoration: BoxDecoration(
+                  color: AppTheme.bgCard,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.border),
                 ),
-              ),
-              // Search
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: TextField(
-                  controller: _search,
-                  onChanged: (_) => setState(() {}),
-                  style: const TextStyle(color: AppTheme.textPrimary),
-                  decoration: const InputDecoration(
-                    hintText: 'Search servers…',
-                    prefixIcon: Icon(Icons.search, color: AppTheme.textHint, size: 18),
-                    isDense: true,
-                  ),
-                ),
-              ),
-              // Sort row
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _SortButton(label: 'CPU ↓', value: 'cpu_desc', current: _sort, onTap: (v) => setState(() => _sort = v)),
-                    const SizedBox(width: 8),
-                    _SortButton(label: 'CPU ↑', value: 'cpu_asc',  current: _sort, onTap: (v) => setState(() => _sort = v)),
-                    const SizedBox(width: 8),
-                    _SortButton(label: 'Status', value: 'status',   current: _sort, onTap: (v) => setState(() => _sort = v)),
+                    _SummaryStat(
+                      label: 'Total',
+                      value: provider.servers.length,
+                      onTap: () => setState(() => _statusFilter = null),
+                      active: _statusFilter == null,
+                    ),
+                    _SummaryStat(
+                      label: 'Healthy',
+                      value: provider.servers.where((s) => s.status.toLowerCase() == 'healthy').length,
+                      color: AppTheme.green,
+                      onTap: () => setState(() => _statusFilter = 'healthy'),
+                      active: _statusFilter == 'healthy',
+                    ),
+                    _SummaryStat(
+                      label: 'Warning',
+                      value: provider.servers.where((s) => s.status.toLowerCase() == 'warning').length,
+                      color: AppTheme.amber,
+                      onTap: () => setState(() => _statusFilter = 'warning'),
+                      active: _statusFilter == 'warning',
+                    ),
+                    _SummaryStat(
+                      label: 'Down',
+                      value: provider.servers.where((s) => s.status.toLowerCase() == 'down').length,
+                      color: AppTheme.red,
+                      onTap: () => setState(() => _statusFilter = 'down'),
+                      active: _statusFilter == 'down',
+                    ),
                   ],
                 ),
               ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: provider.isLoading && provider.servers.isEmpty
-                    ? Column(children: List.generate(3, (_) => const ShimmerCard()))
-                    : servers.isEmpty
-                        ? const Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.dns_outlined, color: AppTheme.textHint, size: 48),
-                                SizedBox(height: 12),
-                                Text('No servers found', style: TextStyle(color: AppTheme.textMuted)),
-                              ],
+            ),
+            // Search
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: TextField(
+                controller: _search,
+                onChanged: (_) => setState(() {}),
+                style: const TextStyle(color: AppTheme.textPrimary),
+                decoration: const InputDecoration(
+                  hintText: 'Search servers…',
+                  prefixIcon: Icon(Icons.search, color: AppTheme.textHint, size: 18),
+                  isDense: true,
+                ),
+              ),
+            ),
+            // Sort row
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  _SortButton(label: 'CPU ↓', value: 'cpu_desc', current: _sort, onTap: (v) => setState(() => _sort = v)),
+                  const SizedBox(width: 8),
+                  _SortButton(label: 'CPU ↑', value: 'cpu_asc',  current: _sort, onTap: (v) => setState(() => _sort = v)),
+                  const SizedBox(width: 8),
+                  _SortButton(label: 'Status', value: 'status',   current: _sort, onTap: (v) => setState(() => _sort = v)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: provider.isLoading && provider.servers.isEmpty
+                  ? Column(children: List.generate(3, (_) => const ShimmerCard()))
+                  : servers.isEmpty
+                      ? ListView(
+                          children: [
+                            SizedBox(height: MediaQuery.of(context).size.height * 0.2),
+                            Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 80, height: 80,
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.bgCard,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: AppTheme.border, width: 2),
+                                    ),
+                                    child: const Icon(Icons.inbox_outlined, color: AppTheme.textMuted, size: 40),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  const Text('No Servers Found', style: TextStyle(color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 8),
+                                  const Text('We couldn\'t find any servers matching your criteria.', 
+                                    textAlign: TextAlign.center, style: TextStyle(color: AppTheme.textMuted, fontSize: 14, height: 1.5)),
+                                ],
+                              ),
                             ),
-                          )
-                        : ListView.builder(
-                            itemCount: servers.length,
-                            itemBuilder: (_, i) => ServerCard(
-                              server: servers[i],
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => ServerDetailScreen(server: servers[i]),
-                                ),
+                          ],
+                        )
+                      : ListView.builder(
+                          itemCount: servers.length,
+                          itemBuilder: (_, i) => ServerCard(
+                            server: servers[i],
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ServerDetailScreen(server: servers[i]),
                               ),
                             ),
                           ),
-              ),
-            ],
-          ),
+                        ),
+            ),
+          ],
+        ),
+      ),
         );
       },
     );

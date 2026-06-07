@@ -5,11 +5,12 @@ import {
 import { useWebSocket } from '../hooks/useWebSocket';
 import { fetchServers, fetchAlerts, fetchPrediction, restartContainer, generateRCA } from '../services/api';
 import { toast } from 'react-toastify';
+import { SkeletonCard } from '../components/Skeleton';
 
 const cpuColor = (v) => {
   if (v >= 80) return '#f85149';
   if (v >= 60) return '#d29922';
-  return '#3fb950';
+  return '#1db974';
 };
 
 const ramColor = (v) => {
@@ -28,15 +29,17 @@ const formatUptime = (s) => {
 const CustomTooltip = ({ active, payload, label, unit }) => {
   if (!active || !payload || !payload.length) return null;
   return (
-    <div style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: 6, padding: '6px 10px', fontSize: 11 }}>
-      <div style={{ color: '#8b949e' }}>{label}</div>
-      <div style={{ color: payload[0].color, fontWeight: 700 }}>{payload[0].value?.toFixed(1)}{unit}</div>
+    <div className="bg-gray-800 border border-gray-700 rounded-lg p-2 shadow-xl text-xs">
+      <div className="text-gray-400 mb-1">{label}</div>
+      <div style={{ color: payload[0].color, fontWeight: 700 }}>
+        {payload[0].value?.toFixed(1)}{unit}
+      </div>
     </div>
   );
 };
 
 export default function Dashboard() {
-  const { metrics, connectionState, rollingHistory } = useWebSocket();
+  const { metrics, rollingHistory } = useWebSocket();
   const [servers, setServers] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [prediction, setPrediction] = useState(null);
@@ -123,122 +126,200 @@ export default function Dashboard() {
   const alertCount = alerts.length;
   const chartData = rollingHistory.map((val, i) => ({ t: i, cpu: val }));
 
+  // Health Score Calculation
+  const healthScore = Math.max(0, 100 - (alertCount * 15) - (cpu > 80 ? 20 : 0));
+
+  if (!metrics) {
+    return (
+      <div className="page-enter p-4">
+        <div className="flex justify-between items-center mb-6">
+           <div className="h-8 w-48 bg-gray-800 rounded animate-pulse" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+        <div className="h-64 bg-gray-800 rounded-lg animate-pulse mb-6" />
+      </div>
+    );
+  }
+
   return (
-    <div className="p-4 bg-gray-900 text-white min-h-screen">
+    <div className="page-enter p-4">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <div>
+          <h1 className="page-title text-2xl font-bold">Infrastructure Overview</h1>
+          <p className="page-subtitle text-sm text-gray-400">Live monitoring of all nodes and services</p>
+        </div>
         <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-400">Updated {lastUpdated}s ago</span>
-          <div className={`px-3 py-1 rounded-full text-xs font-bold ${
-            connectionState === 'connected' ? 'bg-green-900 text-green-400' :
-            connectionState === 'reconnecting' ? 'bg-yellow-900 text-yellow-400' :
-            'bg-red-900 text-red-400'
-          }`}>
-            {connectionState.toUpperCase()}
+          <div className="flex flex-col items-end mr-2">
+            <span className="text-[10px] text-gray-500 font-bold uppercase">Last Updated</span>
+            <span className="text-xs font-medium text-gray-300">{lastUpdated}s ago · Live</span>
           </div>
-          <button onClick={handleExportCSV} className="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-sm transition-colors">
-            Export CSV
+          <button onClick={handleExportCSV} className="btn-secondary">
+            <span>📥</span> Export CSV
           </button>
         </div>
       </div>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700">
-          <div className="text-gray-400 text-sm">CPU Usage</div>
-          <div className="text-2xl font-bold" style={{ color: cpuColor(cpu) }}>{cpu.toFixed(1)}%</div>
-          <div className="text-xs text-gray-500">{servers.length} nodes active</div>
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
+        {/* Health Score Card */}
+        <div className="lg:col-span-1 glass-card p-6 flex flex-col items-center justify-center text-center relative overflow-hidden border-l-4 border-green-500">
+          <div className="text-xs font-bold text-gray-500 uppercase mb-4 tracking-widest">System Health</div>
+          <div className="relative w-32 h-32 flex items-center justify-center mb-2">
+             <svg className="w-full h-full transform -rotate-90">
+                <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-gray-800" />
+                <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="8" fill="transparent" 
+                        strokeDasharray={364} strokeDashoffset={364 - (364 * healthScore) / 100}
+                        strokeLinecap="round"
+                        className={healthScore > 80 ? 'text-green-500' : healthScore > 50 ? 'text-amber-500' : 'text-red-500'} 
+                />
+             </svg>
+             <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-3xl font-black">{healthScore}</span>
+                <span className="text-[10px] text-gray-500 font-bold uppercase">SCORE</span>
+             </div>
+          </div>
+          <div className="text-xs text-gray-400 mt-2">
+             {healthScore > 90 ? 'System is optimal' : healthScore > 70 ? 'Minor issues detected' : 'Action required'}
+          </div>
         </div>
-        <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700">
-          <div className="text-gray-400 text-sm">RAM Usage</div>
-          <div className="text-2xl font-bold" style={{ color: ramColor(ram) }}>{ram.toFixed(1)}%</div>
-          <div className="text-xs text-gray-500">{(ram * 0.16).toFixed(1)} GB used</div>
-        </div>
-        <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700">
-          <div className="text-gray-400 text-sm">Disk Usage</div>
-          <div className="text-2xl font-bold" style={{ color: disk >= 80 ? '#f85149' : '#3fb950' }}>{disk.toFixed(1)}%</div>
-          <div className="text-xs text-gray-500">root partition</div>
-        </div>
-        <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700">
-          <div className="text-gray-400 text-sm">Uptime</div>
-          <div className="text-2xl font-bold text-blue-400">{formatUptime(uptime)}</div>
-          <div className="text-xs text-gray-500">since last boot</div>
+
+        {/* Real-time Stats */}
+        <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="stat-card glass-card border-l-4 border-green-500 p-5">
+            <div className="flex justify-between items-start mb-2">
+              <span className="stat-label">🖥 CPU Usage</span>
+              <span className="text-xs bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded font-bold">LIVE</span>
+            </div>
+            <div className="stat-value" style={{ color: cpuColor(cpu), WebkitTextFillColor: cpuColor(cpu) }}>{cpu.toFixed(1)}%</div>
+            <div className="stat-sub">{servers.length} active nodes</div>
+          </div>
+
+          <div className="stat-card glass-card border-l-4 border-blue-500 p-5">
+            <div className="flex justify-between items-start mb-2">
+              <span className="stat-label">🧠 RAM Usage</span>
+              <span className="text-xs bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded font-bold">LIVE</span>
+            </div>
+            <div className="stat-value" style={{ color: ramColor(ram), WebkitTextFillColor: ramColor(ram) }}>{ram.toFixed(1)}%</div>
+            <div className="stat-sub">{(ram * 0.16).toFixed(1)} GB of 16GB</div>
+          </div>
+
+          <div className="stat-card glass-card border-l-4 border-amber-500 p-5">
+            <div className="flex justify-between items-start mb-2">
+              <span className="stat-label">💾 Disk Space</span>
+              <span className="text-xs bg-amber-500/10 text-amber-500 px-1.5 py-0.5 rounded font-bold">LIVE</span>
+            </div>
+            <div className="stat-value" style={{ color: disk >= 80 ? '#f85149' : '#f0883e', WebkitTextFillColor: disk >= 80 ? '#f85149' : '#f0883e' }}>{disk.toFixed(1)}%</div>
+            <div className="stat-sub">Root partition (/)</div>
+          </div>
         </div>
       </div>
 
-      {/* Network Row */}
-      <div className="bg-gray-800 p-3 rounded-lg border border-gray-700 mb-6 flex gap-8 text-sm">
-        <div className="flex items-center gap-2">
-           <span className="text-gray-400">↓ IN:</span>
-           <span className="text-blue-400 font-mono">{(metrics?.network_in_kbps || 0).toFixed(1)} KB/s</span>
+      {/* Network & Uptime Bar */}
+      <div className="glass-card p-4 mb-6 flex flex-wrap items-center justify-between gap-6">
+        <div className="flex items-center gap-8">
+          <div className="flex flex-col">
+            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Network Traffic</span>
+            <div className="flex items-center gap-4 text-sm font-mono">
+              <span className="flex items-center gap-1.5"><span className="text-blue-400">↓</span> {(metrics?.network_in_kbps || 0).toFixed(1)} KB/s</span>
+              <span className="flex items-center gap-1.5"><span className="text-green-400">↑</span> {(metrics?.network_out_kbps || 0).toFixed(1)} KB/s</span>
+            </div>
+          </div>
+          <div className="h-8 w-px bg-gray-700/50" />
+          <div className="flex flex-col">
+            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">System Uptime</span>
+            <div className="flex items-center gap-2 text-sm font-bold text-blue-400">
+               <span>⏱</span> {formatUptime(uptime)}
+            </div>
+          </div>
         </div>
         <div className="flex items-center gap-2">
-           <span className="text-gray-400">↑ OUT:</span>
-           <span className="text-green-400 font-mono">{(metrics?.network_out_kbps || 0).toFixed(1)} KB/s</span>
+          {prediction?.will_overload && (
+            <div className="animate-bounce bg-red-500/10 text-red-500 border border-red-500/30 px-3 py-1 rounded text-xs font-black uppercase tracking-tighter">
+               ⚠️ Load Warning
+            </div>
+          )}
         </div>
       </div>
 
       {/* AI Prediction Banner */}
       {prediction && (
-        <div className={`mb-6 p-4 rounded-lg border-l-4 ${prediction.will_overload ? 'bg-red-900/20 border-red-500' : 'bg-blue-900/20 border-blue-500'}`}>
-           <div className="flex justify-between items-start">
-              <div>
-                <h3 className="font-bold flex items-center gap-2">
-                  <span className="text-xl">✦</span>
-                  AI Prediction
-                </h3>
-                <p className="mt-1 text-sm">
-                  {prediction.will_overload 
-                    ? `CPU overload predicted in ~${prediction.minutes_until_overload}min · Confidence ${Math.round(prediction.confidence * 100)}%`
-                    : `System stable · No overload predicted · Max CPU expected: ${prediction.predicted_max_cpu?.toFixed(1)}%`
-                  }
-                </p>
+        <div className={`ai-banner mb-6 ${prediction.will_overload ? 'border-red-500/40 bg-red-900/10' : 'border-blue-500/40 bg-blue-900/10'}`}>
+           <div className="ai-banner-header mb-2">
+              <div className={`ai-banner-title ${prediction.will_overload ? 'text-red-400' : 'text-blue-400'}`}>
+                <span className="text-lg">✦</span> InfraLens AI Forecast
               </div>
+              <div className="ai-banner-meta font-mono">CONFIDENCE: {Math.round(prediction.confidence * 100)}%</div>
+           </div>
+           <div className="ai-banner-body flex items-center gap-3">
+              <div className={`w-2 h-2 rounded-full ${prediction.will_overload ? 'bg-red-500' : 'bg-blue-400'} animate-pulse`} />
+              {prediction.will_overload 
+                ? `CRITICAL: CPU surge predicted within ${prediction.minutes_until_overload} minutes. Scale up recommended.`
+                : `System remains stable. Predicted max load for next 30m: ${prediction.predicted_max_cpu?.toFixed(1)}% CPU.`
+              }
            </div>
         </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* CPU Sparkline */}
-        <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
-          <h3 className="text-sm font-bold text-gray-400 mb-4">CPU PERFORMANCE (20 POINTS)</h3>
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={chartData}>
-              <defs>
-                <linearGradient id="colorCpu" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3fb950" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="#3fb950" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <XAxis dataKey="t" hide />
-              <YAxis domain={[0, 100]} hide />
-              <Tooltip content={<CustomTooltip unit="%" />} />
-              <Area type="monotone" dataKey="cpu" stroke="#3fb950" fillOpacity={1} fill="url(#colorCpu)" />
-            </AreaChart>
-          </ResponsiveContainer>
+        <div className="glass-card p-5">
+          <div className="chart-header">
+            <h3 className="chart-title">CPU Utilization (Last 60s)</h3>
+            <span className="text-[10px] font-bold text-green-500 bg-green-500/10 px-2 py-0.5 rounded">AUTO-SCALING ENABLED</span>
+          </div>
+          <div className="h-[240px] mt-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id="cpuGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#1db974" stopOpacity={0.4}/>
+                    <stop offset="95%" stopColor="#1db974" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="t" hide />
+                <YAxis domain={[0, 100]} hide />
+                <Tooltip content={<CustomTooltip unit="%" />} />
+                <Area 
+                  type="monotone" 
+                  dataKey="cpu" 
+                  stroke="#1db974" 
+                  strokeWidth={2} 
+                  fill="url(#cpuGrad)" 
+                  animationDuration={1000}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
         {/* Server Health List */}
-        <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
-          <h3 className="text-sm font-bold text-gray-400 mb-4">SERVER HEALTH</h3>
-          <div className="space-y-3">
+        <div className="glass-card p-5">
+          <h3 className="chart-title mb-4">Node Health Matrix</h3>
+          <div className="server-list">
             {servers.map(s => (
-              <div key={s.name} className="flex items-center gap-4 bg-gray-900/50 p-2 rounded">
-                <div className={`w-3 h-3 rounded-full ${
-                  s.status === 'healthy' ? 'bg-green-500 shadow-[0_0_8px_#3fb950]' :
-                  s.status === 'warning' ? 'bg-yellow-500 shadow-[0_0_8px_#d29922]' :
+              <div key={s.name} className="server-row glass-card p-3 border-none bg-gray-800/30 hover:bg-gray-800/60 transition-colors">
+                <div className={`status-dot ${
+                  s.status === 'healthy' ? 'bg-green-500 shadow-[0_0_8px_#1db974]' :
+                  s.status === 'warning' ? 'bg-amber-500 shadow-[0_0_8px_#f0883e]' :
                   'bg-red-500 shadow-[0_0_8px_#f85149]'
                 }`} />
                 <div className="flex-1">
-                  <div className="text-sm font-medium">{s.name}</div>
-                  <div className="text-xs text-gray-500">{s.role}</div>
+                  <div className="text-sm font-bold">{s.name}</div>
+                  <div className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{s.role}</div>
                 </div>
-                <div className="w-24 bg-gray-700 h-2 rounded overflow-hidden">
-                   <div className="h-full" style={{ width: `${s.cpu}%`, backgroundColor: cpuColor(s.cpu) }} />
+                <div className="flex items-center gap-3 w-1/3">
+                  <div className="mini-bar-wrap flex-1">
+                     <div className="mini-bar" style={{ width: `${s.cpu}%`, backgroundColor: cpuColor(s.cpu) }} />
+                  </div>
+                  <span className="bar-pct font-mono" style={{ color: cpuColor(s.cpu) }}>{s.cpu}%</span>
                 </div>
                 <button 
                   onClick={() => handleRestart(s.id || s.name)}
-                  className="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded transition-colors"
+                  className="btn-ghost text-[10px] font-bold uppercase"
                 >
                   Restart
                 </button>
@@ -248,34 +329,53 @@ export default function Dashboard() {
         </div>
 
         {/* Active Alerts */}
-        <div className="bg-gray-800 p-4 rounded-lg border border-gray-700 lg:col-span-2">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-sm font-bold text-gray-400">ACTIVE ALERTS</h3>
-            <span className="text-xs bg-red-900 text-red-400 px-2 py-0.5 rounded">{alertCount} Active</span>
+        <div className="glass-card p-5 lg:col-span-2">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="chart-title">Security & System Events</h3>
+            <span className={`badge ${alertCount > 0 ? 'bg-red-500/10 text-red-500' : 'bg-green-500/10 text-green-500'}`}>
+              {alertCount} Active Incidents
+            </span>
           </div>
-          <div className="space-y-3">
+          <div className="alert-list">
             {alerts.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">✓ No active alerts detected</div>
+              <div className="flex flex-col items-center justify-center py-12 text-gray-600">
+                <span className="text-4xl mb-4">🛡️</span>
+                <p className="text-sm font-medium">No active security or performance alerts detected.</p>
+                <p className="text-[10px] uppercase font-bold mt-1 tracking-widest">All systems operational</p>
+              </div>
             ) : (
               alerts.map(a => (
-                <div key={a.id} className={`p-3 rounded border-l-4 ${a.severity?.toLowerCase() === 'critical' ? 'bg-red-900/10 border-red-500' : 'bg-yellow-900/10 border-yellow-500'}`}>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <div className="font-bold text-sm">{a.name}</div>
-                      <div className="text-xs text-gray-400">{a.description}</div>
-                    </div>
-                    <button 
-                      onClick={() => handleGenerateRCA(a)}
-                      className="text-xs bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-600/50 px-2 py-1 rounded transition-colors"
-                    >
-                      Generate RCA
-                    </button>
+                <div key={a.id} className={`alert-row glass-card p-4 border-l-4 ${a.severity?.toLowerCase() === 'critical' ? 'border-red-500 bg-red-900/5' : 'border-amber-500 bg-amber-900/5'}`}>
+                  <div className="flex-shrink-0 text-lg mt-0.5">
+                    {a.severity?.toLowerCase() === 'critical' ? '🔴' : '🟡'}
                   </div>
-                  {a.rca && (
-                    <div className="mt-3 p-2 bg-blue-900/20 rounded border border-blue-500/30 text-xs text-blue-100 italic">
-                       <strong>AI RCA:</strong> {a.rca}
+                  <div className="flex-1">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div className="alert-name flex items-center gap-2">
+                           {a.name}
+                           <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${a.severity?.toLowerCase() === 'critical' ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400'}`}>
+                              {a.severity}
+                           </span>
+                        </div>
+                        <div className="alert-time">{a.description}</div>
+                      </div>
+                      <button 
+                        onClick={() => handleGenerateRCA(a)}
+                        className="btn-blue text-[10px] uppercase font-bold px-3 py-1.5"
+                      >
+                        Run Diagnosis (AI)
+                      </button>
                     </div>
-                  )}
+                    {a.rca && (
+                      <div className="mt-4 p-3 bg-blue-900/10 rounded-lg border border-blue-500/20 text-xs text-blue-200">
+                         <div className="font-bold mb-1 flex items-center gap-1.5">
+                           <span className="text-base">🤖</span> AI ROOT CAUSE ANALYSIS:
+                         </div>
+                         {a.rca}
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))
             )}

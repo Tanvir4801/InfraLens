@@ -6,6 +6,8 @@ import '../models/server_info.dart';
 import '../services/api_service.dart';
 import '../widgets/circular_gauge.dart';
 
+import '../widgets/pulse_dot.dart';
+
 class ServerDetailScreen extends StatefulWidget {
   final ServerInfo server;
   const ServerDetailScreen({super.key, required this.server});
@@ -50,7 +52,20 @@ class _ServerDetailScreenState extends State<ServerDetailScreen> {
     return Scaffold(
       backgroundColor: AppTheme.bgPrimary,
       appBar: AppBar(
-        title: Text(s.name),
+        title: Row(
+          children: [
+            Hero(
+              tag: 'server-dot-${s.name}',
+              child: PulseDot(
+                healthy: s.isHealthy,
+                color: s.isHealthy ? AppTheme.green : (s.status.toLowerCase() == 'down' ? AppTheme.red : AppTheme.amber),
+                size: 10,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(s.name),
+          ],
+        ),
         actions: [
           Container(
             margin: const EdgeInsets.only(right: 16),

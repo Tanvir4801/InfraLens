@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
-import { ToastContainer } from 'react-toastify';
+import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
 import Dashboard from './pages/Dashboard';
@@ -19,85 +19,104 @@ import Login from './pages/Login';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import { useWebSocket } from './hooks/useWebSocket';
+import { useSse } from './hooks/useSse';
 import './App.css';
 
 function Sidebar() {
   const { user, logout } = useAuth();
+  const [collapsed, setCollapsed] = useState(false);
   
   return (
-    <nav className="sidebar">
-      <div className="sidebar-section-label">OVERVIEW</div>
+    <nav className={`sidebar ${collapsed ? 'w-16' : 'w-[170px]'} transition-all duration-300 relative`}>
+      <div className="p-4 flex items-center gap-2 mb-4">
+        <span className="text-xl">🔷</span>
+        {!collapsed && <span className="font-bold text-lg tracking-tight">InfraLens</span>}
+      </div>
+
+      <div className="sidebar-section-label">{collapsed ? '—' : 'OVERVIEW'}</div>
       <NavLink to="/" end className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
-        <span className="nav-icon">⊞</span> Dashboard
+        <span className="nav-icon">⊞</span> {!collapsed && 'Dashboard'}
       </NavLink>
       <NavLink to="/servers" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
-        <span className="nav-icon">⬡</span> Servers
+        <span className="nav-icon">⬡</span> {!collapsed && 'Servers'}
       </NavLink>
       <NavLink to="/alerts" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
-        <span className="nav-icon">🔔</span> Alerts
+        <span className="nav-icon">🔔</span> {!collapsed && 'Alerts'}
       </NavLink>
       <NavLink to="/infra-map" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
-        <span className="nav-icon">🗺</span> Infra Map
+        <span className="nav-icon">🗺</span> {!collapsed && 'Infra Map'}
       </NavLink>
 
-      <div className="sidebar-section-label" style={{ marginTop: 20 }}>ANALYTICS</div>
+      <div className="sidebar-section-label" style={{ marginTop: 20 }}>{collapsed ? '—' : 'ANALYTICS'}</div>
       <NavLink to="/metrics" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
-        <span className="nav-icon">∿</span> Metrics
+        <span className="nav-icon">∿</span> {!collapsed && 'Metrics'}
       </NavLink>
       <NavLink to="/ai-predict" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
-        <span className="nav-icon">✦</span> AI Predict
+        <span className="nav-icon">✦</span> {!collapsed && 'AI Predict'}
       </NavLink>
       <NavLink to="/ai-copilot" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
-        <span className="nav-icon">🤖</span> AI Copilot
+        <span className="nav-icon">🤖</span> {!collapsed && 'AI Copilot'}
       </NavLink>
       <NavLink to="/incident-timeline" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
-        <span className="nav-icon">🕒</span> Timeline
+        <span className="nav-icon">🕒</span> {!collapsed && 'Timeline'}
       </NavLink>
       <NavLink to="/cost-optimizer" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
-        <span className="nav-icon">💰</span> Optimizer
+        <span className="nav-icon">💰</span> {!collapsed && 'Optimizer'}
       </NavLink>
 
-      <div className="sidebar-section-label" style={{ marginTop: 20 }}>SYSTEM</div>
+      <div className="sidebar-section-label" style={{ marginTop: 20 }}>{collapsed ? '—' : 'SYSTEM'}</div>
       <NavLink to="/logs" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
-        <span className="nav-icon">≡</span> Logs
+        <span className="nav-icon">≡</span> {!collapsed && 'Logs'}
       </NavLink>
       <NavLink to="/settings" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
-        <span className="nav-icon">⚙</span> Settings
+        <span className="nav-icon">⚙</span> {!collapsed && 'Settings'}
       </NavLink>
 
-      <div className="mt-auto p-4 border-t border-gray-700">
-         <div className="text-xs text-gray-500 mb-2">Logged in as:</div>
-         <div className="text-sm font-bold text-blue-400 mb-4">{user?.username} ({user?.role})</div>
-         <button onClick={logout} className="w-full bg-red-900/20 text-red-400 border border-red-900/50 py-1.5 rounded text-xs font-bold hover:bg-red-900/40 transition-all">
-            LOGOUT
+      <div className="mt-auto p-4 border-t border-gray-700/50">
+         {!collapsed && (
+           <>
+             <div className="text-[10px] text-gray-500 mb-1 uppercase font-bold">Session</div>
+             <div className="text-xs font-bold text-blue-400 mb-3 truncate">{user?.username}</div>
+           </>
+         )}
+         <button onClick={logout} className="w-full bg-red-900/20 text-red-400 border border-red-900/50 py-1.5 rounded text-[10px] font-bold hover:bg-red-900/40 transition-all">
+            {collapsed ? '📤' : 'LOGOUT'}
          </button>
       </div>
+
+      <button 
+        onClick={() => setCollapsed(!collapsed)}
+        className="absolute -right-3 top-10 bg-gray-800 border border-gray-700 rounded-full w-6 h-6 flex items-center justify-center text-[10px] hover:bg-gray-700 z-20"
+      >
+        {collapsed ? '→' : '←'}
+      </button>
     </nav>
   );
 }
 
 function Topbar() {
-  const { metrics, connectionState } = useWebSocket();
-  useEffect(() => {}, [metrics]);
+  const { connectionState } = useWebSocket();
 
   return (
     <header className="topbar">
       <div className="topbar-left">
         <span className="logo-dot" />
-        <span className="logo-text">InfraLens <span className="text-[10px] bg-blue-600 px-1 rounded ml-1">PRO</span></span>
+        <span className="logo-text">InfraLens <span className="text-[9px] bg-gradient-to-r from-blue-600 to-indigo-600 px-1.5 py-0.5 rounded ml-1 shadow-lg shadow-blue-900/20">v2.0 PRO</span></span>
       </div>
       <div className="topbar-right">
         <div className="flex items-center gap-4">
-           <div className="flex flex-col items-end">
-              <span className="text-[10px] text-gray-500 font-bold uppercase">System Status</span>
-              <span className="text-xs font-bold text-green-400">● Optimal</span>
+           <div className="flex items-center gap-2 px-3 py-1 bg-gray-800/40 border border-gray-700/50 rounded-lg">
+              <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Status</span>
+              <span className="text-xs font-bold text-green-400 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500" /> Optimal
+              </span>
            </div>
-           <div className={`px-3 py-1 rounded-full flex items-center gap-2 border ${
-             connectionState === 'connected' ? 'bg-green-900/20 border-green-500/50 text-green-400' : 
-             connectionState === 'reconnecting' ? 'bg-yellow-900/20 border-yellow-500/50 text-yellow-400' :
-             'bg-red-900/20 border-red-500/50 text-red-400'
+           <div className={`px-3 py-1 rounded-lg flex items-center gap-2 border transition-all duration-500 ${
+             connectionState === 'connected' ? 'bg-green-900/10 border-green-500/30 text-green-400' : 
+             connectionState === 'reconnecting' ? 'bg-yellow-900/10 border-yellow-500/30 text-yellow-400' :
+             'bg-red-900/10 border-red-500/30 text-red-400'
            }`}>
-              <div className={`w-2 h-2 rounded-full ${connectionState === 'connected' ? 'animate-pulse bg-green-500' : 'bg-current'}`} />
+              <div className={`w-1.5 h-1.5 rounded-full ${connectionState === 'connected' ? 'animate-pulse bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-current'}`} />
               <span className="text-[10px] font-black uppercase tracking-tighter">{connectionState}</span>
            </div>
         </div>
@@ -107,6 +126,20 @@ function Topbar() {
 }
 
 function AppShell() {
+  const { lastAlert } = useSse();
+  
+  useEffect(() => {
+    if (lastAlert) {
+      if (lastAlert.severity === 'critical') {
+        toast.error(`🚨 Critical Alert: ${lastAlert.name}`, { autoClose: 8000 });
+      } else if (lastAlert.severity === 'warning') {
+        toast.warn(`⚠️ Warning: ${lastAlert.name}`, { autoClose: 5000 });
+      } else {
+        toast.info(`ℹ️ Info: ${lastAlert.name}`, { autoClose: 3000 });
+      }
+    }
+  }, [lastAlert]);
+
   return (
     <div className="app-shell">
       <Topbar />

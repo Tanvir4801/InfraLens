@@ -77,6 +77,10 @@ class MetricsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> fetchNow() async {
+    await _pollMetrics();
+  }
+
   @override
   void dispose() {
     _metricsSub?.cancel();

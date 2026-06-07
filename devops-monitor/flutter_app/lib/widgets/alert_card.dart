@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../constants/app_theme.dart';
@@ -55,7 +56,12 @@ class _AlertCardState extends State<AlertCard> {
           ],
         ),
       ),
-      onDismissed: (_) => widget.onAcknowledge(),
+      onDismissed: (_) {
+        try {
+          HapticFeedback.lightImpact();
+        } catch (_) {}
+        widget.onAcknowledge();
+      },
       child: AnimatedSize(
         duration: const Duration(milliseconds: 200),
         child: Container(

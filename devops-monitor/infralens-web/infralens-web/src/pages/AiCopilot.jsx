@@ -34,7 +34,8 @@ export default function AiCopilot() {
     const userText = text || input;
     if (!userText.trim()) return;
 
-    const newMessages = [...messages, { role: 'user', text: userText }];
+    const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const newMessages = [...messages, { role: 'user', text: userText, time: timestamp }];
     setMessages(newMessages);
     setInput('');
     setLoading(true);
@@ -43,7 +44,8 @@ export default function AiCopilot() {
       const response = await aiChat(userText, context);
       typeWriter(response.answer);
     } catch (err) {
-      setMessages(prev => [...prev, { role: 'ai', text: 'Sorry, I encountered an error processing your request.' }]);
+      const aiTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      setMessages(prev => [...prev, { role: 'ai', text: 'Sorry, I encountered an error processing your request.', time: aiTime }]);
     } finally {
       setLoading(false);
     }
@@ -51,8 +53,9 @@ export default function AiCopilot() {
 
   const typeWriter = (text) => {
     let currentText = '';
+    const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     
-    setMessages(prev => [...prev, { role: 'ai', text: '' }]);
+    setMessages(prev => [...prev, { role: 'ai', text: '', time: timestamp }]);
     
     let i = 0;
     const interval = setInterval(() => {
@@ -97,34 +100,49 @@ export default function AiCopilot() {
            </h2>
         </div>
 
-        <div className="flex-1 overflow-auto p-4 space-y-4">
+        <div className="flex-1 overflow-auto p-6 space-y-6">
           {messages.map((m, i) => (
-            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[80%] rounded-lg p-3 text-sm shadow-lg ${
-                m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-800 border border-blue-500/20 text-gray-100'
-              }`}>
-                {m.role === 'ai' && <div className="text-[10px] uppercase font-bold text-blue-400 mb-1">Copilot</div>}
-                <div className="whitespace-pre-wrap">{m.text}</div>
+            <div key={i} className={`flex items-start gap-3 ${m.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+              <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-lg ${m.role === 'user' ? 'bg-blue-600/20' : 'bg-gray-700/50'}`}>
+                {m.role === 'user' ? '👤' : '🤖'}
+              </div>
+              <div className={`max-w-[75%] group relative ${m.role === 'user' ? 'text-right' : 'text-left'}`}>
+                <div className={`inline-block rounded-2xl p-4 shadow-xl border ${
+                  m.role === 'user' 
+                    ? 'bg-blue-900/30 border-blue-500/30 rounded-tr-sm text-white' 
+                    : 'bg-gray-800/60 border-gray-600/30 rounded-tl-sm text-gray-100'
+                }`}>
+                  {m.role === 'ai' && <div className="text-[10px] uppercase font-black text-blue-400 mb-1 tracking-widest">InfraLens AI</div>}
+                  <div className="whitespace-pre-wrap leading-relaxed">{m.text}</div>
+                </div>
+                {m.time && (
+                  <div className={`text-[9px] text-gray-500 font-bold mt-1 uppercase ${m.role === 'user' ? 'mr-1' : 'ml-1'}`}>
+                    {m.time}
+                  </div>
+                )}
               </div>
             </div>
           ))}
           {loading && (
-            <div className="flex justify-start">
-               <div className="bg-gray-800 rounded-lg p-3 text-sm animate-pulse text-blue-400">
-                  Thinking...
+            <div className="flex justify-start items-start gap-3">
+               <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-700/50 flex items-center justify-center text-lg animate-bounce">🤖</div>
+               <div className="bg-gray-800/60 border border-gray-600/30 rounded-2xl rounded-tl-sm p-4 text-blue-400 flex gap-1">
+                  <span className="animate-bounce" style={{ animationDelay: '0ms' }}>.</span>
+                  <span className="animate-bounce" style={{ animationDelay: '200ms' }}>.</span>
+                  <span className="animate-bounce" style={{ animationDelay: '400ms' }}>.</span>
                </div>
             </div>
           )}
           <div ref={messagesEndRef} />
         </div>
 
-        <div className="p-4 border-t border-gray-700 bg-gray-800/50">
-          <div className="flex gap-2 mb-3 overflow-x-auto pb-2">
+        <div className="p-6 border-t border-gray-700/50 bg-gray-800/30 backdrop-blur-sm">
+          <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide">
             {suggestedQuestions.map(q => (
               <button 
                 key={q} 
                 onClick={() => handleSend(q)}
-                className="whitespace-nowrap px-3 py-1 bg-gray-700 hover:bg-gray-600 border border-gray-600 rounded-full text-xs text-gray-300 transition-colors"
+                className="whitespace-nowrap px-4 py-2 border border-blue-500/40 text-blue-300 hover:bg-blue-900/20 rounded-full text-xs font-bold transition-all"
               >
                 {q}
               </button>

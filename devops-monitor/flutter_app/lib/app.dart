@@ -6,19 +6,42 @@ import 'providers/alerts_provider.dart';
 import 'providers/servers_provider.dart';
 import 'providers/prediction_provider.dart';
 import 'services/notification_service.dart';
+import 'services/sse_service.dart';
 import 'app_shell.dart';
 
-class InfraLensApp extends StatelessWidget {
+class InfraLensApp extends StatefulWidget {
   const InfraLensApp({super.key});
+
+  @override
+  State<InfraLensApp> createState() => _InfraLensAppState();
+}
+
+class _InfraLensAppState extends State<InfraLensApp> {
+  final _metricsProvider = MetricsProvider();
+  final _alertsProvider = AlertsProvider();
+  final _serversProvider = ServersProvider();
+  final _predictionProvider = PredictionProvider();
+
+  @override
+  void initState() {
+    super.initState();
+    _metricsProvider.init();
+    _alertsProvider.init();
+    _serversProvider.init();
+    _predictionProvider.init();
+    
+    SseService().setAlertsProvider(_alertsProvider);
+    SseService().connect();
+  }
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => MetricsProvider()..init()),
-        ChangeNotifierProvider(create: (_) => AlertsProvider()..init()),
-        ChangeNotifierProvider(create: (_) => ServersProvider()..init()),
-        ChangeNotifierProvider(create: (_) => PredictionProvider()..init()),
+        ChangeNotifierProvider.value(value: _metricsProvider),
+        ChangeNotifierProvider.value(value: _alertsProvider),
+        ChangeNotifierProvider.value(value: _serversProvider),
+        ChangeNotifierProvider.value(value: _predictionProvider),
       ],
       child: MaterialApp(
         title: 'InfraLens',

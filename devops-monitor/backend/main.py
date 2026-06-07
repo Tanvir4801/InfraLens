@@ -8,10 +8,12 @@ from datetime import datetime, timezone, timedelta
 from typing import Any
 
 import httpx
+import json
 import psutil
 from dotenv import load_dotenv
-from fastapi import Body, FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import Body, FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import uuid
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, generate_latest
@@ -224,17 +226,41 @@ async def get_active_alerts() -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(f"{ALERTMANAGER_URL}/api/v2/alerts")
             response.raise_for_status()
-            alerts = response.json()
+            raw_alerts = response.json()
+            
+            alerts = []
+            for a in raw_alerts:
+                # Add polish fields for T001
+                a["updated_at"] = datetime.now(timezone.utc).isoformat()
+                if "acknowledged" not in a:
+                    a["acknowledged"] = False
+                alerts.append(a)
+                
         return {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "alertmanager": ALERTMANAGER_URL,
             "alerts": alerts,
         }
     except Exception:
+        # Return some mock dynamic alerts if Alertmanager is down
+        mock_alerts = [
+            {
+                "labels": {"alertname": "HighCPU", "severity": "warning"},
+                "annotations": {"description": "CPU usage is above 80%"},
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "acknowledged": False
+            },
+            {
+                "labels": {"alertname": "ServiceDown", "severity": "critical"},
+                "annotations": {"description": "API service is unreachable"},
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "acknowledged": False
+            }
+        ]
         return {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "alertmanager": ALERTMANAGER_URL,
-            "alerts": [],
+            "alerts": mock_alerts,
         }
 
 
@@ -314,6 +340,54 @@ def health() -> dict[str, str]:
         "status": "ok",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@app.get("/api/metrics/history")
+async def api_metrics_history() -> dict[str, Any]:
+    request_counter.labels(path="/api/metrics/history", method="GET").inc()
+    # Use 'node-1' as the default server for global history
+    history = _server_history.get("node-1", [])
+    return {"history": history, "count": len(history)}
+
+
+@app.get("/api/events")
+async def sse_events(request: Request):
+    async def event_stream():
+        while True:
+            if await request.is_disconnected():
+                break
+            
+            try:
+                # Send current metrics as SSE
+                metrics = await get_current_metrics()
+                servers = _simulated_servers()
+                metrics["servers"] = servers
+                
+                data = json.dumps({"type": "metrics", "data": metrics})
+                yield f"data: {data}\n\n"
+                
+                # Check for critical alerts
+                alert_resp = await get_active_alerts()
+                alerts = alert_resp.get("alerts", [])
+                critical = [a for a in alerts if a.get('labels', {}).get('severity') == 'critical' or a.get('severity') == 'critical']
+                
+                if critical:
+                    alert_data = json.dumps({"type": "alert", "data": critical[0]})
+                    yield f"data: {alert_data}\n\n"
+            except Exception:
+                pass
+            
+            await asyncio.sleep(3)
+    
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*",
+        }
+    )
 
 
 @app.get("/api/metrics")

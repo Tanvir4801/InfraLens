@@ -275,11 +275,11 @@ class _ForecastChart extends StatelessWidget {
               getDrawingHorizontalLine: (_) => FlLine(color: AppTheme.border.withValues(alpha: 0.4), strokeWidth: 0.5),
               getDrawingVerticalLine:   (_) => const FlLine(color: Colors.transparent),
             ),
-            titlesData: const FlTitlesData(
+            titlesData: FlTitlesData(
               show: true,
-              rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-              topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-              leftTitles: AxisTitles(
+              rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              leftTitles: const AxisTitles(
                 sideTitles: SideTitles(
                   showTitles: true,
                   reservedSize: 36,
@@ -289,6 +289,34 @@ class _ForecastChart extends StatelessWidget {
                 sideTitles: SideTitles(
                   showTitles: true,
                   reservedSize: 22,
+                  getTitlesWidget: (v, meta) {
+                    final idx = v.toInt();
+                    if (idx < 0) return const SizedBox();
+                    
+                    DateTime time;
+                    if (idx < history.length) {
+                      // history is usually polled every 3s, but let's assume it's roughly current
+                      time = DateTime.now().subtract(Duration(seconds: (history.length - idx) * 3));
+                    } else {
+                      final forecastIdx = idx - history.length;
+                      if (forecastIdx < forecasts.length) {
+                        // forecast points are usually every minute or so in the backend
+                        time = DateTime.now().add(Duration(minutes: forecastIdx + 1));
+                      } else {
+                        return const SizedBox();
+                      }
+                    }
+                    
+                    if (idx % (maxX / 4).ceil() != 0 && idx != 0 && idx != maxX.toInt()) return const SizedBox();
+
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
+                        style: const TextStyle(color: AppTheme.textHint, fontSize: 9),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),

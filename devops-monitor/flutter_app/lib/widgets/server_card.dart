@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../constants/app_constants.dart';
@@ -30,6 +31,9 @@ class ServerCard extends StatelessWidget {
   }
 
   void _showActions(BuildContext context) {
+    try {
+      HapticFeedback.mediumImpact();
+    } catch (_) {}
     showModalBottomSheet(
       context: context,
       backgroundColor: AppTheme.bgCard,
@@ -56,7 +60,10 @@ class ServerCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            PulseDot(healthy: server.isHealthy, color: _dotColor(server.status)),
+            Hero(
+              tag: 'server-dot-${server.name}',
+              child: PulseDot(healthy: server.isHealthy, color: _dotColor(server.status)),
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(

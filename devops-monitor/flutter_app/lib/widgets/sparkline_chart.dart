@@ -31,7 +31,16 @@ class SparklineChart extends StatelessWidget {
           gridData: const FlGridData(show: false),
           titlesData: const FlTitlesData(show: false),
           borderData: FlBorderData(show: false),
-          lineTouchData: const LineTouchData(enabled: false),
+          lineTouchData: LineTouchData(
+            enabled: true,
+            touchTooltipData: LineTouchTooltipData(
+              getTooltipColor: (_) => AppTheme.bgCard,
+              getTooltipItems: (spots) => spots.map((s) => LineTooltipItem(
+                '${s.y.toStringAsFixed(1)}%',
+                const TextStyle(color: AppTheme.green, fontWeight: FontWeight.bold, fontSize: 12),
+              )).toList(),
+            ),
+          ),
           minY: 0,
           maxY: 100,
           lineBarsData: [
@@ -43,7 +52,11 @@ class SparklineChart extends StatelessWidget {
               dotData: const FlDotData(show: false),
               belowBarData: BarAreaData(
                 show: true,
-                color: color.withValues(alpha: 0.12),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [AppTheme.green.withValues(alpha: 0.3), AppTheme.green.withValues(alpha: 0.0)],
+                ),
               ),
             ),
           ],

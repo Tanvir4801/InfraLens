@@ -17,8 +17,6 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int _tab = 0;
-  int _prevAlertCount = 0;
-  double _badgeScale = 1.0;
 
   void _onTabTapped(int i) => setState(() => _tab = i);
 
@@ -26,17 +24,6 @@ class _AppShellState extends State<AppShell> {
   Widget build(BuildContext context) {
     return Consumer<AlertsProvider>(
       builder: (_, alerts, __) {
-        final count = alerts.criticalCount;
-        if (count != _prevAlertCount && count > _prevAlertCount) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            setState(() => _badgeScale = 1.3);
-            Future.delayed(const Duration(milliseconds: 200), () {
-              if (mounted) setState(() => _badgeScale = 1.0);
-            });
-          });
-        }
-        _prevAlertCount = count;
-
         return Scaffold(
           body: IndexedStack(
             index: _tab,
@@ -59,42 +46,45 @@ class _AppShellState extends State<AppShell> {
                 icon: Icon(Icons.dns_outlined),
                 label: 'Servers',
               ),
-              BottomNavigationBarItem(
-                icon: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    const Icon(Icons.notifications_outlined),
-                    if (count > 0)
-                      Positioned(
-                        right: -4,
-                        top: -4,
-                        child: AnimatedScale(
-                          scale: _badgeScale,
-                          duration: const Duration(milliseconds: 200),
+            BottomNavigationBarItem(
+              icon: Consumer<AlertsProvider>(
+                builder: (_, alerts, __) {
+                  final count = alerts.activeCount;
+                  return Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      const Icon(Icons.notifications_outlined),
+                      if (count > 0)
+                        Positioned(
+                          right: -4,
+                          top: -4,
                           child: Container(
-                            width: 16,
-                            height: 16,
+                            padding: const EdgeInsets.all(2),
                             decoration: const BoxDecoration(
                               color: AppTheme.red,
                               shape: BoxShape.circle,
                             ),
-                            child: Center(
-                              child: Text(
-                                count > 9 ? '9+' : '$count',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                            constraints: const BoxConstraints(
+                              minWidth: 14,
+                              minHeight: 14,
+                            ),
+                            child: Text(
+                              count > 9 ? '9+' : '$count',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 8,
+                                fontWeight: FontWeight.bold,
                               ),
+                              textAlign: TextAlign.center,
                             ),
                           ),
                         ),
-                      ),
-                  ],
-                ),
-                label: 'Alerts',
+                    ],
+                  );
+                },
               ),
+              label: 'Alerts',
+            ),
               const BottomNavigationBarItem(
                 icon: Icon(Icons.auto_awesome_outlined),
                 label: 'Predict',

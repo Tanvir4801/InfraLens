@@ -173,51 +173,72 @@ class _AlertsScreenState extends State<AlertsScreen> {
               ),
             ],
           ),
-          body: Column(
-            children: [
-              // Filter chips
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                child: Row(
-                  children: [
-                    _FilterChip(label: 'All',      value: 'all',      current: _filter, count: provider.activeCount,      onTap: (v) => setState(() => _filter = v)),
-                    const SizedBox(width: 8),
-                    _FilterChip(label: 'Critical', value: 'critical', current: _filter, count: provider.criticalCount,    onTap: (v) => setState(() => _filter = v)),
-                    const SizedBox(width: 8),
-                    _FilterChip(label: 'Warning',  value: 'warning',  current: _filter, count: provider.warningCount,     onTap: (v) => setState(() => _filter = v)),
-                  ],
+          body: RefreshIndicator(
+            onRefresh: provider.fetch,
+            color: AppTheme.green,
+            backgroundColor: AppTheme.bgCard,
+            child: Column(
+              children: [
+                // Filter chips
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  child: Row(
+                    children: [
+                      _FilterChip(label: 'All',      value: 'all',      current: _filter, count: provider.activeCount,      onTap: (v) => setState(() => _filter = v)),
+                      const SizedBox(width: 8),
+                      _FilterChip(label: 'Critical', value: 'critical', current: _filter, count: provider.criticalCount,    onTap: (v) => setState(() => _filter = v)),
+                      const SizedBox(width: 8),
+                      _FilterChip(label: 'Warning',  value: 'warning',  current: _filter, count: provider.warningCount,     onTap: (v) => setState(() => _filter = v)),
+                    ],
+                  ),
                 ),
-              ),
-              if (_rcaCache.isNotEmpty)
-                _RcaCard(
-                  report: _rcaCache.values.first,
-                  onClose: () => setState(() => _rcaCache.clear()),
-                ),
-              Expanded(
-                child: provider.isLoading && provider.allAlerts.isEmpty
-                    ? const Center(child: CircularProgressIndicator(color: AppTheme.green, strokeWidth: 2))
-                    : alerts.isEmpty
-                        ? const Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
+                if (_rcaCache.isNotEmpty)
+                  _RcaCard(
+                    report: _rcaCache.values.first,
+                    onClose: () => setState(() => _rcaCache.clear()),
+                  ),
+                Expanded(
+                  child: provider.isLoading && provider.allAlerts.isEmpty
+                      ? const Center(child: CircularProgressIndicator(color: AppTheme.green, strokeWidth: 2))
+                      : alerts.isEmpty
+                          ? ListView(
                               children: [
-                                Icon(Icons.check_circle_outline, color: AppTheme.green, size: 48),
-                                SizedBox(height: 12),
-                                Text('No alerts in this category', style: TextStyle(color: AppTheme.textMuted)),
+                                SizedBox(height: MediaQuery.of(context).size.height * 0.2),
+                                Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Container(
+                                        width: 80, height: 80,
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.bgCard,
+                                          shape: BoxShape.circle,
+                                          border: Border.all(color: AppTheme.border, width: 2),
+                                        ),
+                                        child: const Icon(Icons.check_circle_outline, color: AppTheme.green, size: 40),
+                                      ),
+                                      const SizedBox(height: 16),
+                                      const Text('All Clear', style: TextStyle(color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
+                                      const SizedBox(height: 8),
+                                      const Text('No active alerts at this time.\nYour infrastructure is healthy.', 
+                                        textAlign: TextAlign.center, style: TextStyle(color: AppTheme.textMuted, fontSize: 14, height: 1.5)),
+                                    ],
+                                  ),
+                                ),
                               ],
+                            )
+                          : ListView.builder(
+                              itemCount: alerts.length,
+                              itemBuilder: (_, i) => AlertCard(
+                                alert: alerts[i],
+                                onAcknowledge: () => provider.acknowledge(alerts[i].id),
+                                onGenerateReport: () => _generateReport(context, alerts[i]),
+                              ),
                             ),
-                          )
-                        : ListView.builder(
-                            itemCount: alerts.length,
-                            itemBuilder: (_, i) => AlertCard(
-                              alert: alerts[i],
-                              onAcknowledge: () => provider.acknowledge(alerts[i].id),
-                              onGenerateReport: () => _generateReport(context, alerts[i]),
-                            ),
-                          ),
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         );
       },
