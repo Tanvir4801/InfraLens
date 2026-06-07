@@ -1,0 +1,708 @@
+You are building InfraLens — a production-grade enterprise DevOps monitoring SaaS platform.
+Transform the existing React dashboard into a complete platform comparable to Datadog / New Relic.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BACKEND & IP CONFIG
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MAC_IP = '10.194.193.201'
+
+Create src/config/constants.js:
+  export const API_BASE        = 'http://10.194.193.201:8000';
+  export const WS_URL          = 'ws://10.194.193.201:8000/ws/live';
+  export const PROMETHEUS_URL  = 'http://10.194.193.201:9090';
+  export const GRAFANA_URL     = 'http://10.194.193.201:3000';
+  export const ALERTMANAGER    = 'http://10.194.193.201:9093';
+
+NEVER use localhost or 127.0.0.1 anywhere in the codebase.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PACKAGES TO INSTALL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+npm install axios recharts reactflow dagre react-toastify
+  jspdf react-router-dom @heroicons/react date-fns
+  jwt-decode react-hot-toast framer-motion
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 1 — REMOVE ALL MOCK DATA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Search and delete:
+  - All hardcoded arrays like [{cpu:45, ram:60, ...}]
+  - All Math.random() metric generation
+  - All setTimeout with fake data generation
+  - All static alert/server/incident arrays
+Replace everything with real API hooks.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 2 — FOLDER STRUCTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/
+  config/
+    constants.js
+  context/
+    AuthContext.jsx       ← JWT + role state
+  hooks/
+    useWebSocket.js       ← live metrics stream
+    useMetrics.js         ← polling metrics
+    useAlerts.js          ← polling alerts
+  services/
+    api.js                ← all axios calls
+    auth.js               ← login/logout/token
+  components/
+    layout/
+      Sidebar.jsx          ← role-filtered nav
+      TopBar.jsx           ← breadcrumb + user
+      ProtectedRoute.jsx   ← role guard
+    ui/
+      StatCard.jsx
+      AlertBadge.jsx
+      StatusDot.jsx
+      GaugeChart.jsx
+      SparklineChart.jsx
+      Toast.jsx
+      ConfirmModal.jsx
+      LoadingSpinner.jsx
+      EmptyState.jsx
+  pages/
+    Login.jsx
+    Dashboard.jsx
+    SupervisorDashboard.jsx
+    UserManagement.jsx
+    AlertCenter.jsx
+    IncidentManagement.jsx
+    ContainerManager.jsx
+    LogExplorer.jsx
+    InfraMap.jsx
+    CostAnalytics.jsx
+    AiOperations.jsx
+    DatabaseExplorer.jsx
+    SecurityCenter.jsx
+    Settings.jsx
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 3 — THEME & DESIGN SYSTEM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Create src/config/theme.js with CSS variables:
+  --bg-primary:    #0d1117
+  --bg-card:       #161b22
+  --bg-card-alt:   #1f2937
+  --border:        #30363d
+  --text-primary:  #e6edf3
+  --text-muted:    #8b949e
+  --text-hint:     #484f58
+  --green:         #1D9E75
+  --green-light:   #5DCAA5
+  --amber:         #EF9F27
+  --red:           #E24B4A
+  --blue:          #378ADD
+  --blue-light:    #85B7EB
+  --purple:        #8957E5
+
+Glassmorphism card mixin:
+  background: rgba(22, 27, 34, 0.8)
+  backdrop-filter: blur(12px)
+  border: 1px solid rgba(48, 54, 61, 0.6)
+  border-radius: 12px
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 4 — AUTH SYSTEM (JWT + 4 roles)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/pages/Login.jsx:
+  Dark enterprise login form
+  Logo: InfraLens (green dot + text)
+  Fields: username + password
+  POST http://10.194.193.201:8000/api/auth/login
+  On success: store token in localStorage,
+    decode role from JWT payload,
+    redirect based on role:
+      admin → /dashboard
+      supervisor → /supervisor
+      operator → /containers
+      viewer → /dashboard (read-only)
+
+src/context/AuthContext.jsx:
+  Provides: {user, role, token, login(), logout()}
+  On app load: check localStorage for token,
+    validate expiry, restore session
+
+src/components/layout/ProtectedRoute.jsx:
+  Props: allowedRoles={['admin','supervisor']}
+  If user role not in allowedRoles → redirect /unauthorized
+  If not logged in → redirect /login
+
+src/components/layout/Sidebar.jsx:
+  Navigation items filtered by role:
+  
+  ADMIN sees all:
+    📊 Dashboard, 👨‍💼 Supervisor View, 👥 Users,
+    🚨 Alerts, 📋 Incidents, 🐳 Containers,
+    📝 Logs, 🌐 Infra Map, 💰 Cost Analytics,
+    🤖 AI Ops, 🗄️ Database, 🔐 Security, ⚙️ Settings
+
+  SUPERVISOR sees:
+    📊 Dashboard, 👨‍💼 Supervisor View, 🚨 Alerts,
+    📋 Incidents, 🐳 Containers, 📝 Logs,
+    🌐 Infra Map, 💰 Cost Analytics, 🤖 AI Ops
+
+  OPERATOR sees:
+    📊 Dashboard, 🚨 Alerts, 🐳 Containers,
+    📝 Logs, 📋 Incidents (assigned only)
+
+  VIEWER sees:
+    📊 Dashboard (read-only), 🌐 Infra Map
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 5 — API SERVICE (src/services/api.js)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+All calls use Authorization: Bearer {token} header.
+
+// Metrics
+fetchMetrics()         → GET /api/metrics
+fetchServers()         → GET /api/servers
+fetchPrediction()      → GET /api/predict
+
+// Alerts
+fetchAlerts()          → GET /api/alerts
+acknowledgeAlert(id)   → PATCH /api/alerts/{id}/acknowledge
+resolveAlert(id)       → PATCH /api/alerts/{id}/resolve
+assignAlert(id,userId) → PATCH /api/alerts/{id}/assign
+
+// Containers
+fetchContainers()      → GET /api/containers
+restartContainer(id)   → POST /api/containers/{id}/restart
+stopContainer(id)      → POST /api/containers/{id}/stop
+fetchContainerLogs(id) → GET /api/containers/{id}/logs?tail=200
+
+// Incidents
+fetchIncidents()       → GET /api/incidents
+createIncident(data)   → POST /api/incidents
+updateIncident(id,d)   → PATCH /api/incidents/{id}
+resolveIncident(id)    → PATCH /api/incidents/{id}/resolve
+
+// Users (admin only)
+fetchUsers()           → GET /api/users
+createUser(data)       → POST /api/users
+updateUser(id,data)    → PATCH /api/users/{id}
+deleteUser(id)         → DELETE /api/users/{id}
+toggleUser(id)         → PATCH /api/users/{id}/toggle
+
+// AI
+aiChat(q,context)      → GET /api/chat?q={q}
+generateRCA(alert,metrics) → POST /api/incident-report
+fetchCostAnalysis()    → GET /api/cost-analysis
+fetchTopology()        → GET /api/topology
+fetchIncidentTimeline()→ GET /api/incidents/timeline
+fetchAuditLogs()       → GET /api/audit-logs
+
+// Auth
+login(u,p)             → POST /api/auth/login
+fetchCurrentUser()     → GET /api/auth/me
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 6 — WEBSOCKET HOOK
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/hooks/useWebSocket.js:
+  Connects to ws://10.194.193.201:8000/ws/live
+  Returns: {metrics, connectionState, rollingHistory}
+  connectionState: 'connected'|'reconnecting'|'offline'
+  rollingHistory: last 20 CPU values array
+  Auto-reconnect with backoff: 1s→2s→4s→8s→30s
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PAGE 1 — DASHBOARD (src/pages/Dashboard.jsx)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Top bar:
+  Connection pill (green "Live" / amber "Reconnecting" /
+    red "Offline") + "X containers" badge +
+  "Updated Xs ago" + Export buttons (CSV, PDF)
+
+Stat row (4 glassmorphism cards):
+  CPU% | RAM% | Disk% | Uptime
+  Color: green<60 amber<80 red>=80
+  TweenAnimationBuilder for number transitions
+
+Health Score widget (large):
+  Animated number 0-100
+  Label: Excellent/Good/At Risk/Critical
+  Tooltip: explains formula on click
+
+AI Prediction banner:
+  Fetches /api/predict every 60s
+  If will_overload: red banner with countdown timer +
+    "Recommended: Scale deployment" action button
+  Else: blue banner "System stable · Confidence X%"
+
+CPU sparkline: Recharts LineChart
+  20 points from WebSocket, minY:0, maxY:100
+  Green line + green area fill, no axes
+
+Server health list: real /api/servers
+  Status dot (by status field) + name + CPU bar +
+  "Restart" button (admin/operator only)
+
+Active alerts: real /api/alerts
+  Severity badge + name + "X mins ago" +
+  "Generate RCA" button
+
+Network row: IN/OUT KB/s from metrics
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PAGE 2 — SUPERVISOR DASHBOARD
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/pages/SupervisorDashboard.jsx:
+
+Top stat row (7 cards):
+  Total Servers | Active Alerts | Critical Incidents |
+  Health Score | Team Online | SLA Compliance % |
+  Infra Availability %
+
+Charts row (3 Recharts):
+  Alert Trends (last 24h bar chart, red/amber)
+  Incident Trends (last 7 days line chart)
+  Resource Usage Trends (CPU/RAM area chart)
+
+Tables:
+  Recent Incidents table:
+    ID | Severity | Owner | Status | Created | SLA
+    "Assign" button per row → dropdown of operators
+  
+  Assigned Tasks table:
+    Task | Assigned To | Priority | Due | Status
+  
+  Pending Reviews table:
+    Item | Submitted By | Type | Action buttons
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PAGE 3 — USER MANAGEMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/pages/UserManagement.jsx (admin only):
+
+Header: "Users" + "Add User" button
+
+Table columns:
+  Avatar (initials) | Username | Email | Role badge |
+  Department | Status (green dot=active/red=inactive) |
+  Last Login | Online now indicator | Actions
+
+Actions per row:
+  Edit (pencil icon) → opens EditUserModal
+  Delete (trash icon) → confirm modal → DELETE /api/users/{id}
+  Toggle (toggle icon) → activate/deactivate
+
+"Add User" modal fields:
+  Username, Email, Password, Role dropdown
+    (admin/supervisor/operator/viewer),
+  Department text field
+  Submit → POST /api/users
+
+"Edit User" modal:
+  Pre-fills all fields, submit → PATCH /api/users/{id}
+
+Stats row above table:
+  Total Users | Active | Inactive | Online Now
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PAGE 4 — ALERT CENTER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/pages/AlertCenter.jsx:
+
+Tab row: All | Critical | Warning | Acknowledged | Resolved
+
+Stats row: Total | Critical | Warning | Resolved today
+
+Alert cards:
+  Left border (red=critical, amber=warning, green=resolved)
+  Header: severity badge + name + source + timestamp
+  Description text (expandable)
+  Footer buttons:
+    "Acknowledge" (operator+)
+    "Resolve" (supervisor+)
+    "Assign →" dropdown of operators (supervisor+)
+    "Escalate ↑" (supervisor+)
+    "Generate RCA" → POST /api/incident-report
+      Loading spinner → expandable RCA card below
+
+RCA card (when generated):
+  Blue-tinted bg + robot icon + "AI Root Cause Analysis"
+  Report text from Gemini
+  "Generated by Gemini 1.5 Flash · X secs ago"
+  "Copy Report" button
+
+Auto-refresh every 30s + "Updated Xs ago" label.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PAGE 5 — INCIDENT MANAGEMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/pages/IncidentManagement.jsx:
+
+Header: "Incidents" + "Create Incident" button
+
+Tab row: Open | Assigned | In Progress | Resolved | All
+
+Stats: Open | Assigned | Resolved today | Avg resolution time
+
+Table columns:
+  ID | Severity badge | Title | Owner | Status badge |
+  Created | SLA deadline | Actions
+
+Status badges:
+  Open (red) | Assigned (amber) | In Progress (blue) |
+  Resolved (green)
+
+Actions:
+  View → opens IncidentDetailModal
+  Assign → dropdown of operators
+  Resolve → confirm → PATCH /api/incidents/{id}/resolve
+
+IncidentDetailModal:
+  Full incident details + timeline of status changes +
+  "Add Note" text area + AI Summary button
+  (calls Gemini with incident data)
+
+"Create Incident" modal fields:
+  Title, Severity (P1/P2/P3/P4), Description,
+  Assign To, Source alert (dropdown)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PAGE 6 — CONTAINER MANAGER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/pages/ContainerManager.jsx:
+
+Stats row: Total | Running | Stopped | Restarting
+
+Tab row: All | Running | Stopped | K8s Pods
+
+Table columns:
+  Status dot | Container Name | Image | CPU bar |
+  RAM bar | Disk | Uptime | Restart Count | Actions
+
+Actions:
+  "Restart" → confirm modal → POST /api/containers/{id}/restart
+    → loading state "Restarting..." → "Running" status update
+    → green toast "Container restarted ✓"
+  "Stop" (admin only) → confirm → POST /api/containers/{id}/stop
+  "Logs" → opens LogsModal (see below)
+  "Health" → health check status popup
+
+LogsModal:
+  Full-screen dark terminal style
+  Container: id, name, status in header
+  Logs in <pre> with green text on #0d1117 bg
+  Search bar (highlights matching lines in yellow)
+  Filter: ALL | ERROR | WARN | INFO
+  "Download .log" button
+  "Tail live" toggle (polls every 2s)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PAGE 7 — LOG EXPLORER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/pages/LogExplorer.jsx (Kibana-style):
+
+Left panel (240px):
+  "Services" section — list of containers/pods
+  Click to select which service to view
+  Each item shows: colored dot + name + log count
+
+Top bar:
+  Search input (full-text search across logs)
+  Level filter: ALL | ERROR | WARN | INFO | DEBUG
+  Time range: Last 1h / 6h / 24h / Custom
+  "Download" button → exports filtered logs as .log file
+
+Main area (terminal style, dark):
+  Log lines: timestamp | level badge | service | message
+  ERROR lines: red background tint
+  WARN lines: amber background tint
+  Search matches: yellow highlight
+  Line count + "Last updated X secs ago"
+  "Live tail" toggle (polls every 2s)
+
+Fetches: GET /api/containers/{id}/logs?tail=200&level={level}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PAGE 8 — INFRASTRUCTURE MAP
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/pages/InfraMap.jsx:
+
+Uses React Flow (reactflow) with dagre auto-layout.
+
+Node types (custom styled):
+  Server node: rectangle, shows name + CPU% + status dot
+  Container node: rounded rect, Docker whale icon + name
+  K8s pod node: hexagon style, K8s icon + name
+  Service node: diamond, service name
+  Database node: cylinder style, db name
+
+Edge colors:
+  Green: healthy connection
+  Red: unhealthy / failing
+  Dashed: K8s internal
+
+Controls:
+  Zoom in/out + fit view buttons
+  Filter toggle: show/hide containers, pods, services
+  "Refresh topology" button
+
+Right sidebar (opens on node click):
+  Node name + type + status
+  Resource usage (CPU/RAM mini bars)
+  "Restart" button if it's a container
+  "View Logs" button
+  Last event timestamp
+
+Data from GET /api/topology:
+  Returns {nodes:[{id,type,label,status,cpu,ram}],
+           edges:[{source,target,status}]}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PAGE 9 — COST ANALYTICS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/pages/CostAnalytics.jsx:
+
+Top stat cards:
+  Est. Monthly Cost | Avg CPU Utilization |
+  Avg RAM Utilization | Potential Savings
+
+Recharts BarChart: cost breakdown by service/container
+
+Underutilized services table:
+  Container | Avg CPU% | Avg RAM% | Allocated |
+  Recommendation | Est. Saving
+  Highlight rows where avg CPU < 10% in amber
+  Recommendation: "Reduce CPU limit from X to Y"
+
+Optimization suggestions cards:
+  Each card: service name + issue + action button
+  "CPU at 3% avg — consider reducing allocation"
+  "Container idle for 2h — consider stopping"
+
+Data from GET /api/cost-analysis
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PAGE 10 — AI OPERATIONS CENTER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/pages/AiOperations.jsx:
+
+Layout: 60% chat area + 40% context panel
+
+Context panel (right):
+  Live metrics snapshot: CPU/RAM/Disk gauges (small)
+  Active alerts count (red badge)
+  "Last updated X secs ago"
+
+Chat area (left):
+  Header: "DevOps Copilot" + robot icon + "Powered by Gemini"
+
+  Suggested question chips (2 rows):
+    "Why is memory high?"
+    "Which container restarted most?"
+    "Show unhealthy services"
+    "Predict disk usage next hour"
+    "What caused the last alert?"
+    "How can I reduce CPU usage?"
+    "Is my system healthy?"
+    "Summarize recent incidents"
+  
+  Chat history:
+    User bubble: right-aligned, bg-card-alt, white text
+    AI bubble: left-aligned, blue-tinted bg,
+      small robot avatar, monospace font for code blocks
+    Typewriter effect: setInterval(25ms) appends chars
+    Code blocks in AI response: dark bg + monospace font
+  
+  Input area:
+    TextField + send button
+    "InfraLens AI is thinking..." typing indicator
+    (3 animated dots)
+  
+  Context sent with every message:
+    {cpu, ram, disk, alerts_count, uptime,
+     containers_count, active_alerts: [names]}
+
+  Root Cause Analysis tab:
+    Shows last 5 RCA reports generated
+    Each: alert name + timestamp + report text
+    Collapsible cards
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PAGE 11 — DATABASE EXPLORER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/pages/DatabaseExplorer.jsx (MongoDB Compass style):
+
+Left panel: collections list
+  Users | Alerts | Incidents | Metrics | Audit Logs
+  Each shows document count
+
+Main area (changes based on selected collection):
+  Stats row: Total docs | Size | Last updated
+  
+  Search bar + filter row (field: value)
+  
+  Table: columns auto-generated from first document
+  Pagination: 20 per page with prev/next
+  
+  Row click → opens DocumentDetailModal:
+    Full JSON document in dark code block
+    Pretty-printed with syntax highlighting
+
+Data from GET /api/db/{collection}?page=X&search=Y
+(FastAPI reads from MongoDB or SQLite depending on setup)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PAGE 12 — SECURITY CENTER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/pages/SecurityCenter.jsx:
+
+Stats row:
+  Failed Logins (24h) | Active Sessions |
+  Suspicious Activities | Audit Events
+
+Tabs: Failed Logins | Active Sessions |
+      Suspicious Activity | Audit Log
+
+Failed Logins table:
+  Username | IP Address | Timestamp | Attempts | Status
+  
+Active Sessions table:
+  User | Role | IP | Login Time | Last Active |
+  "Revoke" button (admin only)
+
+Suspicious Activities table:
+  Type | Source IP | User | Details | Timestamp
+  Highlighted red rows for high-severity events
+
+Audit Log table (all user actions):
+  User | Action | Resource | Timestamp | IP
+  Filter by user, action type, time range
+  "Export CSV" button
+
+Data from GET /api/audit-logs + GET /api/sessions
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PAGE 13 — SETTINGS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/pages/Settings.jsx (admin only):
+
+Sections:
+  General: Platform name, timezone, date format
+  Notifications: alert thresholds, email settings
+  Integrations: GitHub token (for CI/CD), Slack webhook
+  API Keys: show/hide Gemini + Groq keys (masked)
+  Backup: export all config as JSON
+  About: version, uptime, build info
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+UNIQUE FEATURE 1 — ONE-CLICK RECOVERY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+On every container card/row — "Restart" button:
+  1. Click → ConfirmModal: "Restart {name}?"
+  2. Confirm → POST /api/containers/{id}/restart
+  3. Button shows "Restarting..." spinner
+  4. Poll GET /api/containers/{id} every 2s
+  5. When status = 'running': green toast "Restarted ✓"
+  6. On error: red toast with error message
+Available to: admin + operator roles only.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+UNIQUE FEATURE 2 — AI ROOT CAUSE ANALYSIS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+On every alert card — "Generate RCA" button:
+  1. Click → loading spinner inline
+  2. POST /api/incident-report with alert + metrics
+  3. Response renders as expandable card below alert:
+     Robot icon + "AI Root Cause Analysis"
+     Report text (typewriter effect)
+     "Copy" button
+     "Create Incident from this" button
+  4. Cache in React state Map<alertId, rcaText>
+     so it doesn't re-fetch on re-render.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+UNIQUE FEATURE 3 — DEVOPS COPILOT CHAT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Full chat UI on AI Operations page.
+Suggested chips auto-fill + auto-send question.
+Every question includes live metrics context.
+Typewriter effect on AI responses.
+Code blocks rendered with dark monospace styling.
+Chat history persists in React state for session.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LAYOUT — SIDEBAR + TOPBAR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/components/layout/Sidebar.jsx:
+  Width: 220px collapsed / 60px icon-only mode
+  Toggle button at bottom
+  Logo: green dot + "InfraLens" text
+  Nav items filtered by role (see Step 4)
+  Active item: green right border + lighter bg
+  Bottom: user avatar + name + role badge + logout button
+
+src/components/layout/TopBar.jsx:
+  Left: breadcrumb (Home > Current Page)
+  Center: platform name (hidden on mobile)
+  Right: connection status pill +
+    alert bell (count badge) +
+    user avatar dropdown (profile, settings, logout)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PROFESSIONAL POLISH
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Framer Motion: page transitions (fadeIn 150ms)
+   + card mount animations (slideUp + fade)
+
+2. react-toastify: all actions show toasts
+   Green: success operations
+   Red: errors
+   Amber: warnings / new critical alerts
+
+3. Auto-refresh indicators: every data-fetching
+   page shows "Updated Xs ago" with spinning icon
+
+4. Export on Dashboard:
+   "Export CSV" → downloads metrics as CSV
+   "Export PDF" → jspdf generates a report
+
+5. Responsive breakpoints:
+   <768px: sidebar collapses to bottom tab bar
+   <480px: cards stack vertically
+
+6. Loading states: every table/chart shows
+   skeleton loader (gray pulsing rows) while fetching
+
+7. Empty states: every empty list shows
+   centered icon + message + action button
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FASTAPI BACKEND ENDPOINTS NEEDED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Also update backend/main.py to add these routes
+(if not already present):
+
+POST /api/auth/login → {access_token, role, user}
+GET  /api/auth/me    → current user info
+GET  /api/users      → list users
+POST /api/users      → create user
+PATCH/DELETE /api/users/{id}
+GET  /api/incidents  → list incidents
+POST /api/incidents  → create
+PATCH /api/incidents/{id}/resolve
+GET  /api/incidents/timeline → aggregated events
+GET  /api/topology   → {nodes, edges} for infra map
+GET  /api/cost-analysis → utilization + suggestions
+GET  /api/audit-logs → user action log
+GET  /api/sessions   → active JWT sessions
+GET  /api/db/{collection} → database explorer data
+POST /api/containers/{id}/restart
+POST /api/containers/{id}/stop
+GET  /api/containers/{id}/logs
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DELIVERABLE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Generate ALL files completely. No TODOs. No placeholders.
+Every page must use real API data.
+All charts use Recharts with real data.
+JWT auth must protect all routes.
+Role-based access must work correctly.
+App runs with: npm start
+Build with: npm run build

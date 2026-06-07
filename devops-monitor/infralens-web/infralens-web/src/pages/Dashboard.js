@@ -1,387 +1,211 @@
 import React, { useState, useEffect } from 'react';
-import {
-  XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area
-} from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useWebSocket } from '../hooks/useWebSocket';
-import { fetchServers, fetchAlerts, fetchPrediction, restartContainer, generateRCA } from '../services/api';
+import { useAlerts } from '../hooks/useAlerts';
+import { fetchServers, fetchPrediction, restartContainer, generateRCA } from '../services/api';
+import { T, glass, metricColor, severityColor } from '../config/theme';
+import StatCard from '../components/ui/StatCard';
+import StatusDot from '../components/ui/StatusDot';
+import AlertBadge from '../components/ui/AlertBadge';
+import ConfirmModal from '../components/ui/ConfirmModal';
+import LoadingSpinner from '../components/ui/LoadingSpinner';
 import { toast } from 'react-toastify';
-import { SkeletonCard } from '../components/Skeleton';
+import { useAuth } from '../context/AuthContext';
 
-const cpuColor = (v) => {
-  if (v >= 80) return '#f85149';
-  if (v >= 60) return '#d29922';
-  return '#1db974';
-};
-
-const ramColor = (v) => {
-  if (v >= 85) return '#f85149';
-  if (v >= 65) return '#d29922';
-  return '#58a6ff';
-};
-
-const formatUptime = (s) => {
-  if (!s) return '0m';
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
-};
-
-const CustomTooltip = ({ active, payload, label, unit }) => {
-  if (!active || !payload || !payload.length) return null;
-  return (
-    <div className="bg-gray-800 border border-gray-700 rounded-lg p-2 shadow-xl text-xs">
-      <div className="text-gray-400 mb-1">{label}</div>
-      <div style={{ color: payload[0].color, fontWeight: 700 }}>
-        {payload[0].value?.toFixed(1)}{unit}
-      </div>
-    </div>
-  );
-};
+const fmt = (s) => { const h=Math.floor(s/3600),m=Math.floor((s%3600)/60); return h>0?`${h}h ${m}m`:`${m}m`; };
 
 export default function Dashboard() {
-  const { metrics, rollingHistory } = useWebSocket();
-  const [servers, setServers] = useState([]);
-  const [alerts, setAlerts] = useState([]);
+  const { metrics, rollingHistory, connectionState } = useWebSocket();
+  const { alerts, lastUpdated } = useAlerts(30000);
+  const { hasRole } = useAuth();
+  const [servers,    setServers]    = useState([]);
   const [prediction, setPrediction] = useState(null);
-  const [lastUpdated, setLastUpdated] = useState(0);
+  const [rcaMap,     setRcaMap]     = useState({});
+  const [rcaLoading, setRcaLoading] = useState({});
+  const [confirm,    setConfirm]    = useState(null);
+  const [loadingSrv, setLoadingSrv] = useState(true);
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [sData, aData, pData] = await Promise.all([
-          fetchServers(),
-          fetchAlerts(),
-          fetchPrediction()
-        ]);
-        setServers(sData);
-        setAlerts(aData);
-        setPrediction(pData);
-        setLastUpdated(0);
-      } catch (err) {
-        console.error('Failed to load dashboard data', err);
-      }
-    };
-
-    loadData();
-    const serverInterval = setInterval(async () => {
-        const data = await fetchServers();
-        setServers(data);
-    }, 10000);
-    const alertInterval = setInterval(async () => {
-        const data = await fetchAlerts();
-        setAlerts(data);
-    }, 30000);
-    
-    const timer = setInterval(() => setLastUpdated(prev => prev + 1), 1000);
-
-    return () => {
-      clearInterval(serverInterval);
-      clearInterval(alertInterval);
-      clearInterval(timer);
-    };
+    fetchServers().then(d => { setServers(d); setLoadingSrv(false); }).catch(() => setLoadingSrv(false));
+    fetchPrediction().then(setPrediction).catch(() => {});
+    const i1 = setInterval(() => fetchServers().then(setServers).catch(()=>{}), 10000);
+    const i2 = setInterval(() => fetchPrediction().then(setPrediction).catch(()=>{}), 60000);
+    return () => { clearInterval(i1); clearInterval(i2); };
   }, []);
 
-  const handleRestart = async (id) => {
-    if (window.confirm(`Are you sure you want to restart container ${id}?`)) {
-      try {
-        await restartContainer(id);
-        toast.success(`Container ${id} restart initiated`);
-      } catch (err) {
-        toast.error(`Failed to restart container ${id}`);
-      }
-    }
+  const doRestart = async (id) => {
+    try { await restartContainer(id); toast.success(`Container ${id} restarted ✓`); }
+    catch { toast.error(`Failed to restart ${id}`); }
+    setConfirm(null);
   };
 
-  const handleGenerateRCA = async (alert) => {
+  const handleRCA = async (alert, key) => {
+    setRcaLoading(p => ({...p,[key]:true}));
     try {
-      toast.info('Generating RCA...');
-      const rca = await generateRCA(alert, metrics);
-      alert.rca = rca.report;
-      setAlerts([...alerts]);
+      const r = await generateRCA(alert, metrics);
+      setRcaMap(p => ({...p,[key]:r.report}));
       toast.success('RCA generated');
-    } catch (err) {
-      toast.error('Failed to generate RCA');
-    }
+    } catch { toast.error('RCA failed'); }
+    setRcaLoading(p => ({...p,[key]:false}));
   };
 
   const handleExportCSV = () => {
-    const csvContent = "data:text/csv;charset=utf-8," 
-      + "Metric,Value\n"
-      + `CPU,${metrics?.cpu_percent}%\n`
-      + `RAM,${metrics?.ram_percent}%\n`
-      + `Disk,${metrics?.disk_percent}%\n`
-      + `Uptime,${metrics?.uptime_seconds}s`;
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "metrics.csv");
-    document.body.appendChild(link);
-    link.click();
+    const rows = [['Metric','Value'],['CPU',`${metrics?.cpu_percent}%`],['RAM',`${metrics?.ram_percent}%`],['Disk',`${metrics?.disk_percent}%`],['Uptime',`${metrics?.uptime_seconds}s`]];
+    const blob = new Blob([rows.map(r=>r.join(',')).join('\n')], {type:'text/csv'});
+    const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='metrics.csv'; a.click();
   };
 
-  const cpu = metrics?.cpu_percent ?? 0;
-  const ram = metrics?.ram_percent ?? 0;
-  const disk = metrics?.disk_percent ?? 0;
+  const cpu    = metrics?.cpu_percent  ?? 0;
+  const ram    = metrics?.ram_percent  ?? 0;
+  const disk   = metrics?.disk_percent ?? 0;
   const uptime = metrics?.uptime_seconds ?? 0;
-  const alertCount = alerts.length;
-  const chartData = rollingHistory.map((val, i) => ({ t: i, cpu: val }));
-
-  // Health Score Calculation
-  const healthScore = Math.max(0, 100 - (alertCount * 15) - (cpu > 80 ? 20 : 0));
-
-  if (!metrics) {
-    return (
-      <div className="page-enter p-4">
-        <div className="flex justify-between items-center mb-6">
-           <div className="h-8 w-48 bg-gray-800 rounded animate-pulse" />
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
-        </div>
-        <div className="h-64 bg-gray-800 rounded-lg animate-pulse mb-6" />
-      </div>
-    );
-  }
+  const healthScore = Math.max(0, Math.round(100-(alerts.length*12)-(cpu>80?20:0)-(ram>80?10:0)));
+  const chartData = rollingHistory.map((v,i) => ({t:i, cpu:v}));
+  const csColor = connectionState==='connected' ? T.green : connectionState==='reconnecting' ? T.amber : T.red;
 
   return (
-    <div className="page-enter p-4">
-      <div className="flex justify-between items-center mb-6">
+    <div style={{ padding:24, background:T.bgPrimary, minHeight:'100%' }}>
+      {/* Header */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:24 }}>
         <div>
-          <h1 className="page-title text-2xl font-bold">Infrastructure Overview</h1>
-          <p className="page-subtitle text-sm text-gray-400">Live monitoring of all nodes and services</p>
+          <h1 style={{ color:T.textPrimary, fontSize:22, fontWeight:700, margin:0 }}>Infrastructure Overview</h1>
+          <p style={{ color:T.textMuted, fontSize:13, margin:'4px 0 0' }}>Live monitoring · Updated {lastUpdated}s ago</p>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="flex flex-col items-end mr-2">
-            <span className="text-[10px] text-gray-500 font-bold uppercase">Last Updated</span>
-            <span className="text-xs font-medium text-gray-300">{lastUpdated}s ago · Live</span>
+        <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 12px', borderRadius:20, background:`${csColor}18`, border:`1px solid ${csColor}44` }}>
+            <div style={{ width:7, height:7, borderRadius:'50%', background:csColor, boxShadow:`0 0 6px ${csColor}` }} />
+            <span style={{ color:csColor, fontSize:11, fontWeight:700 }}>{connectionState==='connected'?'Live':connectionState}</span>
           </div>
-          <button onClick={handleExportCSV} className="btn-secondary">
-            <span>📥</span> Export CSV
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
-        {/* Health Score Card */}
-        <div className="lg:col-span-1 glass-card p-6 flex flex-col items-center justify-center text-center relative overflow-hidden border-l-4 border-green-500">
-          <div className="text-xs font-bold text-gray-500 uppercase mb-4 tracking-widest">System Health</div>
-          <div className="relative w-32 h-32 flex items-center justify-center mb-2">
-             <svg className="w-full h-full transform -rotate-90">
-                <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-gray-800" />
-                <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="8" fill="transparent" 
-                        strokeDasharray={364} strokeDashoffset={364 - (364 * healthScore) / 100}
-                        strokeLinecap="round"
-                        className={healthScore > 80 ? 'text-green-500' : healthScore > 50 ? 'text-amber-500' : 'text-red-500'} 
-                />
-             </svg>
-             <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-3xl font-black">{healthScore}</span>
-                <span className="text-[10px] text-gray-500 font-bold uppercase">SCORE</span>
-             </div>
-          </div>
-          <div className="text-xs text-gray-400 mt-2">
-             {healthScore > 90 ? 'System is optimal' : healthScore > 70 ? 'Minor issues detected' : 'Action required'}
-          </div>
-        </div>
-
-        {/* Real-time Stats */}
-        <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="stat-card glass-card border-l-4 border-green-500 p-5">
-            <div className="flex justify-between items-start mb-2">
-              <span className="stat-label">🖥 CPU Usage</span>
-              <span className="text-xs bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded font-bold">LIVE</span>
-            </div>
-            <div className="stat-value" style={{ color: cpuColor(cpu), WebkitTextFillColor: cpuColor(cpu) }}>{cpu.toFixed(1)}%</div>
-            <div className="stat-sub">{servers.length} active nodes</div>
-          </div>
-
-          <div className="stat-card glass-card border-l-4 border-blue-500 p-5">
-            <div className="flex justify-between items-start mb-2">
-              <span className="stat-label">🧠 RAM Usage</span>
-              <span className="text-xs bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded font-bold">LIVE</span>
-            </div>
-            <div className="stat-value" style={{ color: ramColor(ram), WebkitTextFillColor: ramColor(ram) }}>{ram.toFixed(1)}%</div>
-            <div className="stat-sub">{(ram * 0.16).toFixed(1)} GB of 16GB</div>
-          </div>
-
-          <div className="stat-card glass-card border-l-4 border-amber-500 p-5">
-            <div className="flex justify-between items-start mb-2">
-              <span className="stat-label">💾 Disk Space</span>
-              <span className="text-xs bg-amber-500/10 text-amber-500 px-1.5 py-0.5 rounded font-bold">LIVE</span>
-            </div>
-            <div className="stat-value" style={{ color: disk >= 80 ? '#f85149' : '#f0883e', WebkitTextFillColor: disk >= 80 ? '#f85149' : '#f0883e' }}>{disk.toFixed(1)}%</div>
-            <div className="stat-sub">Root partition (/)</div>
-          </div>
+          <span style={{ color:T.textMuted, fontSize:12, padding:'5px 12px', borderRadius:20, background:T.bgCard, border:`1px solid ${T.border}` }}>{servers.length} nodes</span>
+          <button onClick={handleExportCSV} style={{ padding:'6px 14px', borderRadius:8, background:T.bgCard, border:`1px solid ${T.border}`, color:T.textMuted, fontSize:12, cursor:'pointer' }}>Export CSV</button>
         </div>
       </div>
 
-      {/* Network & Uptime Bar */}
-      <div className="glass-card p-4 mb-6 flex flex-wrap items-center justify-between gap-6">
-        <div className="flex items-center gap-8">
-          <div className="flex flex-col">
-            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Network Traffic</span>
-            <div className="flex items-center gap-4 text-sm font-mono">
-              <span className="flex items-center gap-1.5"><span className="text-blue-400">↓</span> {(metrics?.network_in_kbps || 0).toFixed(1)} KB/s</span>
-              <span className="flex items-center gap-1.5"><span className="text-green-400">↑</span> {(metrics?.network_out_kbps || 0).toFixed(1)} KB/s</span>
-            </div>
-          </div>
-          <div className="h-8 w-px bg-gray-700/50" />
-          <div className="flex flex-col">
-            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">System Uptime</span>
-            <div className="flex items-center gap-2 text-sm font-bold text-blue-400">
-               <span>⏱</span> {formatUptime(uptime)}
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {prediction?.will_overload && (
-            <div className="animate-bounce bg-red-500/10 text-red-500 border border-red-500/30 px-3 py-1 rounded text-xs font-black uppercase tracking-tighter">
-               ⚠️ Load Warning
-            </div>
-          )}
-        </div>
+      {/* Stat cards */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))', gap:16, marginBottom:20 }}>
+        <StatCard label="CPU Usage"  value={cpu}  unit="%" sub={`${servers.length} nodes`}  color={metricColor(cpu)}  icon="🖥" />
+        <StatCard label="RAM Usage"  value={ram}  unit="%" sub="Virtual memory"              color={metricColor(ram)}  icon="🧠" />
+        <StatCard label="Disk Usage" value={disk} unit="%" sub="Root partition"              color={metricColor(disk)} icon="💾" />
+        <StatCard label="Uptime"     value={fmt(uptime)} sub="Since last boot"               color={T.blue}            icon="⏱" />
       </div>
 
-      {/* AI Prediction Banner */}
+      {/* AI Prediction banner */}
       {prediction && (
-        <div className={`ai-banner mb-6 ${prediction.will_overload ? 'border-red-500/40 bg-red-900/10' : 'border-blue-500/40 bg-blue-900/10'}`}>
-           <div className="ai-banner-header mb-2">
-              <div className={`ai-banner-title ${prediction.will_overload ? 'text-red-400' : 'text-blue-400'}`}>
-                <span className="text-lg">✦</span> InfraLens AI Forecast
-              </div>
-              <div className="ai-banner-meta font-mono">CONFIDENCE: {Math.round(prediction.confidence * 100)}%</div>
-           </div>
-           <div className="ai-banner-body flex items-center gap-3">
-              <div className={`w-2 h-2 rounded-full ${prediction.will_overload ? 'bg-red-500' : 'bg-blue-400'} animate-pulse`} />
-              {prediction.will_overload 
-                ? `CRITICAL: CPU surge predicted within ${prediction.minutes_until_overload} minutes. Scale up recommended.`
-                : `System remains stable. Predicted max load for next 30m: ${prediction.predicted_max_cpu?.toFixed(1)}% CPU.`
-              }
-           </div>
+        <div style={{ ...glass, padding:'14px 20px', marginBottom:20, borderLeft:`3px solid ${prediction.will_overload?T.red:T.blue}`, background:prediction.will_overload?`${T.red}0d`:`${T.blue}0d` }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <span style={{ fontSize:16 }}>✦</span>
+              <span style={{ color:prediction.will_overload?T.red:T.blue, fontWeight:700, fontSize:13 }}>
+                {prediction.will_overload
+                  ? `⚠ CPU surge predicted in ${prediction.minutes_until_overload} min — scale deployment recommended`
+                  : `System stable · Predicted max CPU: ${prediction.predicted_max_cpu?.toFixed(1)}%`}
+              </span>
+            </div>
+            <span style={{ color:T.textMuted, fontSize:11 }}>Confidence {Math.round((prediction.confidence||0)*100)}%</span>
+          </div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* CPU Sparkline */}
-        <div className="glass-card p-5">
-          <div className="chart-header">
-            <h3 className="chart-title">CPU Utilization (Last 60s)</h3>
-            <span className="text-[10px] font-bold text-green-500 bg-green-500/10 px-2 py-0.5 rounded">AUTO-SCALING ENABLED</span>
+      {/* Health score + CPU sparkline */}
+      <div style={{ display:'grid', gridTemplateColumns:'200px 1fr', gap:16, marginBottom:20 }}>
+        <div style={{ ...glass, padding:20, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
+          <div style={{ fontSize:11, color:T.textMuted, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.8px', marginBottom:12 }}>Health Score</div>
+          <div style={{ position:'relative', width:110, height:110 }}>
+            <svg width="110" height="110" style={{ transform:'rotate(-90deg)' }}>
+              <circle cx="55" cy="55" r="48" stroke={T.border} strokeWidth="7" fill="none" />
+              <circle cx="55" cy="55" r="48" stroke={healthScore>80?T.green:healthScore>50?T.amber:T.red} strokeWidth="7" fill="none"
+                strokeDasharray={301.6} strokeDashoffset={301.6-(301.6*healthScore/100)} strokeLinecap="round" />
+            </svg>
+            <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
+              <span style={{ fontSize:26, fontWeight:800, color:healthScore>80?T.green:healthScore>50?T.amber:T.red }}>{healthScore}</span>
+              <span style={{ fontSize:9, color:T.textHint, fontWeight:700, textTransform:'uppercase' }}>score</span>
+            </div>
           </div>
-          <div className="h-[240px] mt-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData}>
-                <defs>
-                  <linearGradient id="cpuGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#1db974" stopOpacity={0.4}/>
-                    <stop offset="95%" stopColor="#1db974" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="t" hide />
-                <YAxis domain={[0, 100]} hide />
-                <Tooltip content={<CustomTooltip unit="%" />} />
-                <Area 
-                  type="monotone" 
-                  dataKey="cpu" 
-                  stroke="#1db974" 
-                  strokeWidth={2} 
-                  fill="url(#cpuGrad)" 
-                  animationDuration={1000}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+          <div style={{ fontSize:12, color:T.textMuted, marginTop:8 }}>{healthScore>90?'Excellent':healthScore>75?'Good':healthScore>50?'At Risk':'Critical'}</div>
         </div>
 
-        {/* Server Health List */}
-        <div className="glass-card p-5">
-          <h3 className="chart-title mb-4">Node Health Matrix</h3>
-          <div className="server-list">
-            {servers.map(s => (
-              <div key={s.name} className="server-row glass-card p-3 border-none bg-gray-800/30 hover:bg-gray-800/60 transition-colors">
-                <div className={`status-dot ${
-                  s.status === 'healthy' ? 'bg-green-500 shadow-[0_0_8px_#1db974]' :
-                  s.status === 'warning' ? 'bg-amber-500 shadow-[0_0_8px_#f0883e]' :
-                  'bg-red-500 shadow-[0_0_8px_#f85149]'
-                }`} />
-                <div className="flex-1">
-                  <div className="text-sm font-bold">{s.name}</div>
-                  <div className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{s.role}</div>
-                </div>
-                <div className="flex items-center gap-3 w-1/3">
-                  <div className="mini-bar-wrap flex-1">
-                     <div className="mini-bar" style={{ width: `${s.cpu}%`, backgroundColor: cpuColor(s.cpu) }} />
-                  </div>
-                  <span className="bar-pct font-mono" style={{ color: cpuColor(s.cpu) }}>{s.cpu}%</span>
-                </div>
-                <button 
-                  onClick={() => handleRestart(s.id || s.name)}
-                  className="btn-ghost text-[10px] font-bold uppercase"
-                >
-                  Restart
-                </button>
-              </div>
-            ))}
+        <div style={{ ...glass, padding:20 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+            <span style={{ color:T.textPrimary, fontSize:13, fontWeight:600 }}>CPU Utilization (Live)</span>
+            <span style={{ color:T.green, fontSize:11, fontWeight:700, background:`${T.green}18`, padding:'2px 8px', borderRadius:4 }}>LIVE</span>
           </div>
-        </div>
-
-        {/* Active Alerts */}
-        <div className="glass-card p-5 lg:col-span-2">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="chart-title">Security & System Events</h3>
-            <span className={`badge ${alertCount > 0 ? 'bg-red-500/10 text-red-500' : 'bg-green-500/10 text-green-500'}`}>
-              {alertCount} Active Incidents
-            </span>
-          </div>
-          <div className="alert-list">
-            {alerts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-gray-600">
-                <span className="text-4xl mb-4">🛡️</span>
-                <p className="text-sm font-medium">No active security or performance alerts detected.</p>
-                <p className="text-[10px] uppercase font-bold mt-1 tracking-widest">All systems operational</p>
-              </div>
-            ) : (
-              alerts.map(a => (
-                <div key={a.id} className={`alert-row glass-card p-4 border-l-4 ${a.severity?.toLowerCase() === 'critical' ? 'border-red-500 bg-red-900/5' : 'border-amber-500 bg-amber-900/5'}`}>
-                  <div className="flex-shrink-0 text-lg mt-0.5">
-                    {a.severity?.toLowerCase() === 'critical' ? '🔴' : '🟡'}
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <div className="alert-name flex items-center gap-2">
-                           {a.name}
-                           <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${a.severity?.toLowerCase() === 'critical' ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400'}`}>
-                              {a.severity}
-                           </span>
-                        </div>
-                        <div className="alert-time">{a.description}</div>
-                      </div>
-                      <button 
-                        onClick={() => handleGenerateRCA(a)}
-                        className="btn-blue text-[10px] uppercase font-bold px-3 py-1.5"
-                      >
-                        Run Diagnosis (AI)
-                      </button>
-                    </div>
-                    {a.rca && (
-                      <div className="mt-4 p-3 bg-blue-900/10 rounded-lg border border-blue-500/20 text-xs text-blue-200">
-                         <div className="font-bold mb-1 flex items-center gap-1.5">
-                           <span className="text-base">🤖</span> AI ROOT CAUSE ANALYSIS:
-                         </div>
-                         {a.rca}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
+          <div style={{ height:120 }}>
+            {chartData.length>0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <defs><linearGradient id="cpuGrd" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={T.green} stopOpacity={0.3}/><stop offset="95%" stopColor={T.green} stopOpacity={0}/></linearGradient></defs>
+                  <XAxis dataKey="t" hide /><YAxis domain={[0,100]} hide />
+                  <Tooltip formatter={v=>[`${v.toFixed(1)}%`,'CPU']} contentStyle={{ background:T.bgCard, border:`1px solid ${T.border}`, borderRadius:8, fontSize:11 }} />
+                  <Area type="monotone" dataKey="cpu" stroke={T.green} strokeWidth={2} fill="url(#cpuGrd)" dot={false} animationDuration={500} />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:T.textHint, fontSize:13 }}>Waiting for WebSocket data…</div>}
           </div>
         </div>
       </div>
+
+      {/* Servers + Alerts */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+        <div style={{ ...glass, padding:20 }}>
+          <h3 style={{ color:T.textPrimary, fontSize:14, fontWeight:600, margin:'0 0 16px' }}>Node Health</h3>
+          {loadingSrv ? <LoadingSpinner /> : servers.map(s => (
+            <div key={s.name} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 0', borderBottom:`1px solid ${T.border}33` }}>
+              <StatusDot status={s.status} />
+              <div style={{ flex:1 }}>
+                <div style={{ color:T.textPrimary, fontSize:13, fontWeight:600 }}>{s.name}</div>
+                <div style={{ color:T.textHint, fontSize:10, textTransform:'uppercase' }}>{s.role} · {s.ip}</div>
+              </div>
+              <div style={{ display:'flex', alignItems:'center', gap:8, width:120 }}>
+                <div style={{ flex:1, height:5, background:T.border, borderRadius:3 }}><div style={{ width:`${s.cpu}%`, height:'100%', background:metricColor(s.cpu), borderRadius:3 }} /></div>
+                <span style={{ color:metricColor(s.cpu), fontSize:11, fontWeight:700, width:34, textAlign:'right' }}>{s.cpu}%</span>
+              </div>
+              {hasRole('admin','operator') && (
+                <button onClick={() => setConfirm({id:s.name,label:s.name})} style={{ padding:'4px 10px', borderRadius:6, background:`${T.amber}18`, border:`1px solid ${T.amber}33`, color:T.amber, fontSize:11, cursor:'pointer' }}>Restart</button>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div style={{ ...glass, padding:20 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', marginBottom:16 }}>
+            <h3 style={{ color:T.textPrimary, fontSize:14, fontWeight:600, margin:0 }}>Active Alerts</h3>
+            <span style={{ fontSize:11, color:alerts.length?T.red:T.green, background:alerts.length?`${T.red}18`:`${T.green}18`, padding:'2px 8px', borderRadius:4, fontWeight:700 }}>{alerts.length} active</span>
+          </div>
+          {alerts.length===0 ? (
+            <div style={{ textAlign:'center', padding:'32px 0', color:T.textHint }}>
+              <div style={{ fontSize:32, marginBottom:8 }}>🛡</div>
+              <div style={{ fontSize:13 }}>All systems healthy</div>
+            </div>
+          ) : alerts.slice(0,5).map((a,i) => {
+            const key = a.id||i;
+            const name = a.labels?.alertname||a.name||'Alert';
+            const sev  = a.labels?.severity||a.severity||'warning';
+            const desc = a.annotations?.description||a.description||'';
+            const sc   = severityColor(sev);
+            return (
+              <div key={key} style={{ borderLeft:`3px solid ${sc}`, padding:'10px 12px', marginBottom:8, background:`${sc}0a`, borderRadius:'0 8px 8px 0' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <AlertBadge severity={sev} />
+                    <span style={{ color:T.textPrimary, fontSize:13, fontWeight:600 }}>{name}</span>
+                  </div>
+                  <button onClick={() => handleRCA(a,key)} disabled={rcaLoading[key]} style={{ padding:'3px 8px', borderRadius:6, background:`${T.blue}18`, border:`1px solid ${T.blue}33`, color:T.blue, fontSize:10, cursor:'pointer' }}>
+                    {rcaLoading[key]?'…':'RCA'}
+                  </button>
+                </div>
+                {desc && <div style={{ color:T.textMuted, fontSize:11, marginTop:4 }}>{desc}</div>}
+                {rcaMap[key] && (
+                  <div style={{ marginTop:8, padding:10, background:`${T.blue}0d`, borderRadius:6, border:`1px solid ${T.blue}22`, fontSize:11, color:T.blueLight }}>
+                    <strong>🤖 AI RCA:</strong> {rcaMap[key]}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <ConfirmModal open={!!confirm} title={`Restart ${confirm?.label}?`} message="This will restart the container and may cause brief downtime." danger onConfirm={() => doRestart(confirm.id)} onCancel={() => setConfirm(null)} />
     </div>
   );
 }

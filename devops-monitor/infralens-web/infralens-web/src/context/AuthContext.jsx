@@ -4,38 +4,34 @@ import { login as loginApi } from '../services/api';
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  const [user,  setUser]  = useState(null);
   const [token, setToken] = useState(localStorage.getItem('token'));
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('user');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
+    const saved = localStorage.getItem('user');
+    if (saved) { try { setUser(JSON.parse(saved)); } catch {} }
   }, []);
 
   const login = async (username, password) => {
     const data = await loginApi(username, password);
-    const userData = { username, role: data.role };
+    const userData = { username: data.username || username, role: data.role };
     setUser(userData);
     setToken(data.access_token);
     localStorage.setItem('token', data.access_token);
     localStorage.setItem('user', JSON.stringify(userData));
+    return userData;
   };
 
   const logout = () => {
-    setUser(null);
-    setToken(null);
+    setUser(null); setToken(null);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
   };
 
-  const hasRole = (roles) => {
-    return user && roles.includes(user.role);
-  };
+  const hasRole = (...roles) => user && roles.flat().includes(user.role);
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, hasRole }}>
+    <AuthContext.Provider value={{ user, token, login, logout, hasRole, role: user?.role }}>
       {children}
     </AuthContext.Provider>
   );

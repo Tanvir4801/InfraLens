@@ -459,8 +459,34 @@ async def api_incident_report(payload: dict[str, Any] = Body(...)) -> dict[str, 
 
 
 
-# Simulated state for new endpoints
+# ── In-memory stores ────────────────────────────────────────────────────────
+
 _incident_events: list[dict[str, Any]] = []
+
+_incidents: list[dict[str, Any]] = [
+    {"id": "INC-001", "title": "High CPU on node-2", "severity": "P2", "description": "CPU sustained above 85% for 15 min", "status": "open",     "assigned_to": "operator", "owner": "operator", "created_at": datetime.now(timezone.utc).isoformat()},
+    {"id": "INC-002", "title": "API service latency",  "severity": "P3", "description": "P99 latency > 2s",                  "status": "assigned",  "assigned_to": "operator", "owner": "operator", "created_at": datetime.now(timezone.utc).isoformat()},
+    {"id": "INC-003", "title": "DB connection pool",   "severity": "P1", "description": "Connection pool exhausted on db-primary", "status": "resolved", "assigned_to": "admin",    "owner": "admin",    "created_at": datetime.now(timezone.utc).isoformat()},
+]
+
+_users: list[dict[str, Any]] = [
+    {"id": "u1", "username": "admin",    "email": "admin@infralens.io",    "role": "admin",      "department": "Platform", "status": "active",   "last_login": datetime.now(timezone.utc).isoformat(), "online": True},
+    {"id": "u2", "username": "operator", "email": "ops@infralens.io",      "role": "operator",   "department": "DevOps",   "status": "active",   "last_login": datetime.now(timezone.utc).isoformat(), "online": True},
+    {"id": "u3", "username": "viewer",   "email": "viewer@infralens.io",   "role": "viewer",     "department": "Finance",  "status": "active",   "last_login": datetime.now(timezone.utc).isoformat(), "online": False},
+    {"id": "u4", "username": "supervisor","email": "sup@infralens.io",     "role": "supervisor", "department": "SRE",      "status": "inactive", "last_login": datetime.now(timezone.utc).isoformat(), "online": False},
+]
+
+_audit_log: list[dict[str, Any]] = [
+    {"user": "admin",    "action": "login",              "resource": "/api/auth/login",                   "ip": "10.0.0.1",  "timestamp": datetime.now(timezone.utc).isoformat()},
+    {"user": "operator", "action": "restart_container",  "resource": "/api/containers/node-1/restart",    "ip": "10.0.0.5",  "timestamp": datetime.now(timezone.utc).isoformat()},
+    {"user": "admin",    "action": "acknowledge_alert",  "resource": "/api/alerts/a1/acknowledge",        "ip": "10.0.0.1",  "timestamp": datetime.now(timezone.utc).isoformat()},
+    {"user": "operator", "action": "resolve_incident",   "resource": "/api/incidents/INC-003/resolve",    "ip": "10.0.0.5",  "timestamp": datetime.now(timezone.utc).isoformat()},
+]
+
+_sessions: list[dict[str, Any]] = [
+    {"user": "admin",    "role": "admin",    "ip": "10.0.0.1", "login": datetime.now(timezone.utc).isoformat(), "last_active": "just now"},
+    {"user": "operator", "role": "operator", "ip": "10.0.0.5", "login": datetime.now(timezone.utc).isoformat(), "last_active": "5m ago"},
+]
 
 
 def _log_incident(description: str, severity: str = "info"):
@@ -472,6 +498,12 @@ def _log_incident(description: str, severity: str = "info"):
     })
     if len(_incident_events) > 50:
         _incident_events.pop(0)
+
+
+def _add_audit(user: str, action: str, resource: str, ip: str = "—"):
+    _audit_log.append({"user": user, "action": action, "resource": resource, "ip": ip, "timestamp": datetime.now(timezone.utc).isoformat()})
+    if len(_audit_log) > 200:
+        _audit_log.pop(0)
 
 
 class LoginRequest(BaseModel):
@@ -531,11 +563,45 @@ async def api_topology() -> dict[str, Any]:
 @app.get("/api/incidents")
 async def api_incidents() -> list[dict[str, Any]]:
     request_counter.labels(path="/api/incidents", method="GET").inc()
-    # Add some initial mock incidents if list is empty
-    if not _incident_events:
-        for i in range(5):
-            _log_incident(f"System boot sequence {i} completed", "info")
-    return _incident_events[-10:]
+    return _incidents
+
+
+@app.post("/api/incidents")
+async def api_create_incident(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    request_counter.labels(path="/api/incidents", method="POST").inc()
+    inc = {
+        "id": f"INC-{len(_incidents)+1:03d}",
+        "title": payload.get("title", "Unnamed Incident"),
+        "severity": payload.get("severity", "P3"),
+        "description": payload.get("description", ""),
+        "status": "open",
+        "assigned_to": payload.get("assigned_to", ""),
+        "owner": payload.get("assigned_to", ""),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _incidents.insert(0, inc)
+    _add_audit("system", "create_incident", f"/api/incidents")
+    return inc
+
+
+@app.patch("/api/incidents/{id}/resolve")
+async def api_resolve_incident(id: str) -> dict[str, Any]:
+    request_counter.labels(path="/api/incidents/{id}/resolve", method="PATCH").inc()
+    for inc in _incidents:
+        if inc["id"] == id:
+            inc["status"] = "resolved"
+            _add_audit("system", "resolve_incident", f"/api/incidents/{id}/resolve")
+            return inc
+    raise HTTPException(status_code=404, detail="Incident not found")
+
+
+@app.patch("/api/incidents/{id}")
+async def api_update_incident(id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    for inc in _incidents:
+        if inc["id"] == id:
+            inc.update({k: v for k, v in payload.items() if k != "id"})
+            return inc
+    raise HTTPException(status_code=404, detail="Incident not found")
 
 
 @app.get("/api/cost-analysis")
@@ -569,7 +635,106 @@ async def api_login(req: LoginRequest) -> dict[str, str]:
 async def api_acknowledge_alert(id: str) -> dict[str, bool]:
     request_counter.labels(path="/api/alerts/{id}/acknowledge", method="PATCH").inc()
     _log_incident(f"Alert {id} acknowledged by admin", "info")
+    _add_audit("system", "acknowledge_alert", f"/api/alerts/{id}/acknowledge")
     return {"success": True}
+
+
+@app.patch("/api/alerts/{id}/resolve")
+async def api_resolve_alert(id: str) -> dict[str, bool]:
+    request_counter.labels(path="/api/alerts/{id}/resolve", method="PATCH").inc()
+    _add_audit("system", "resolve_alert", f"/api/alerts/{id}/resolve")
+    return {"success": True}
+
+
+@app.patch("/api/alerts/{id}/assign")
+async def api_assign_alert(id: str, payload: dict[str, Any] = Body(...)) -> dict[str, bool]:
+    return {"success": True}
+
+
+# ── Users ────────────────────────────────────────────────────────────────────
+
+@app.get("/api/users")
+async def api_get_users() -> list[dict[str, Any]]:
+    request_counter.labels(path="/api/users", method="GET").inc()
+    return _users
+
+
+@app.post("/api/users")
+async def api_create_user(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    request_counter.labels(path="/api/users", method="POST").inc()
+    user = {
+        "id": f"u{len(_users)+1}",
+        "username":   payload.get("username", ""),
+        "email":      payload.get("email", ""),
+        "role":       payload.get("role", "viewer"),
+        "department": payload.get("department", ""),
+        "status":     "active",
+        "last_login": datetime.now(timezone.utc).isoformat(),
+        "online":     False,
+    }
+    _users.append(user)
+    _add_audit("admin", "create_user", "/api/users")
+    return user
+
+
+@app.patch("/api/users/{id}")
+async def api_update_user(id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    for u in _users:
+        if u["id"] == id:
+            u.update({k: v for k, v in payload.items() if k not in ("id", "password")})
+            _add_audit("admin", "update_user", f"/api/users/{id}")
+            return u
+    raise HTTPException(status_code=404, detail="User not found")
+
+
+@app.delete("/api/users/{id}")
+async def api_delete_user(id: str) -> dict[str, bool]:
+    global _users
+    before = len(_users)
+    _users = [u for u in _users if u["id"] != id]
+    if len(_users) == before:
+        raise HTTPException(status_code=404, detail="User not found")
+    _add_audit("admin", "delete_user", f"/api/users/{id}")
+    return {"success": True}
+
+
+@app.patch("/api/users/{id}/toggle")
+async def api_toggle_user(id: str) -> dict[str, Any]:
+    for u in _users:
+        if u["id"] == id:
+            u["status"] = "inactive" if u["status"] == "active" else "active"
+            _add_audit("admin", "toggle_user", f"/api/users/{id}/toggle")
+            return u
+    raise HTTPException(status_code=404, detail="User not found")
+
+
+# ── Audit / Sessions / Containers ────────────────────────────────────────────
+
+@app.get("/api/audit-logs")
+async def api_audit_logs() -> list[dict[str, Any]]:
+    request_counter.labels(path="/api/audit-logs", method="GET").inc()
+    return list(reversed(_audit_log))
+
+
+@app.get("/api/sessions")
+async def api_sessions() -> list[dict[str, Any]]:
+    return _sessions
+
+
+@app.get("/api/containers")
+async def api_containers() -> list[dict[str, Any]]:
+    return _simulated_servers()
+
+
+@app.post("/api/containers/{id}/stop")
+async def api_container_stop(id: str) -> dict[str, Any]:
+    _add_audit("system", "stop_container", f"/api/containers/{id}/stop")
+    return {"success": True, "message": f"Container {id} stopped"}
+
+
+@app.get("/api/auth/me")
+async def api_auth_me() -> dict[str, Any]:
+    return {"username": "admin", "role": "admin", "email": "admin@infralens.io"}
 
 
 @app.websocket("/ws/live")

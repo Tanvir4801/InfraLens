@@ -1,49 +1,42 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { WS_URL } from '../config/constants';
 
-export const useWebSocket = () => {
+export function useWebSocket() {
   const [metrics, setMetrics] = useState(null);
-  const [connectionState, setConnectionState] = useState('offline');
+  const [connectionState, setConnectionState] = useState('connecting');
   const [rollingHistory, setRollingHistory] = useState([]);
-  const reconnectTimeoutRef = useRef(1000);
-  const socketRef = useRef(null);
+  const wsRef    = useRef(null);
+  const retryRef = useRef(null);
+  const backoff  = useRef(1000);
 
-  const connect = () => {
-    setConnectionState('reconnecting');
-    const ws = new WebSocket(WS_URL);
-    socketRef.current = ws;
-
-    ws.onopen = () => {
-      setConnectionState('connected');
-      reconnectTimeoutRef.current = 1000;
-    };
-
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      setMetrics(data);
-      setRollingHistory(prev => {
-        const newHistory = [...prev, data.cpu_usage || 0];
-        return newHistory.slice(-20);
-      });
-    };
-
-    ws.onclose = () => {
-      setConnectionState('offline');
-      setTimeout(connect, reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = Math.min(reconnectTimeoutRef.current * 2, 30000);
-    };
-
-    ws.onerror = () => {
-      ws.close();
-    };
-  };
+  const connect = useCallback(() => {
+    try {
+      const ws = new WebSocket(WS_URL);
+      wsRef.current = ws;
+      ws.onopen = () => { setConnectionState('connected'); backoff.current = 1000; };
+      ws.onmessage = (e) => {
+        try {
+          const d = JSON.parse(e.data);
+          setMetrics(d);
+          if (d.cpu_percent != null)
+            setRollingHistory(p => [...p.slice(-19), d.cpu_percent]);
+        } catch {}
+      };
+      ws.onclose = () => {
+        setConnectionState('reconnecting');
+        retryRef.current = setTimeout(() => {
+          backoff.current = Math.min(backoff.current * 2, 30000);
+          connect();
+        }, backoff.current);
+      };
+      ws.onerror = () => { setConnectionState('offline'); ws.close(); };
+    } catch { setConnectionState('offline'); }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     connect();
-    return () => {
-      if (socketRef.current) socketRef.current.close();
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { clearTimeout(retryRef.current); wsRef.current?.close(); };
+  }, [connect]);
 
   return { metrics, connectionState, rollingHistory };
-};
+}
