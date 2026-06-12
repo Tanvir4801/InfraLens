@@ -11,24 +11,28 @@ class MetricsProvider extends ChangeNotifier {
 
   MetricsSnapshot? _snapshot;
   WsState _wsState = WsState.disconnected;
-  final List<double> _rollingHistory = [];
+
+  final List<double> _rollingHistory    = [];
+  final List<double> _networkInHistory  = [];
+  final List<double> _networkOutHistory = [];
+
   StreamSubscription<MetricsSnapshot>? _metricsSub;
-  StreamSubscription<WsState>? _stateSub;
+  StreamSubscription<WsState>?         _stateSub;
   Timer? _pollTimer;
 
-  MetricsSnapshot? get snapshot       => _snapshot;
-  WsState          get wsState        => _wsState;
-  List<double>     get rollingHistory => List.unmodifiable(_rollingHistory);
+  MetricsSnapshot? get snapshot          => _snapshot;
+  WsState          get wsState           => _wsState;
+  List<double>     get rollingHistory    => List.unmodifiable(_rollingHistory);
+  List<double>     get networkInHistory  => List.unmodifiable(_networkInHistory);
+  List<double>     get networkOutHistory => List.unmodifiable(_networkOutHistory);
 
   double get healthScore {
     if (_snapshot == null) return 0;
     final s = _snapshot!;
-    final alertPenalty = 0.0; // updated by AlertsProvider externally
     return (100 -
-            (s.cpuPercent * 0.4 +
-             s.ramPercent * 0.3 +
-             s.diskPercent * 0.2 +
-             alertPenalty * 0.1))
+            (s.cpuPercent  * 0.4 +
+             s.ramPercent  * 0.3 +
+             s.diskPercent * 0.2))
         .clamp(0.0, 100.0);
   }
 
@@ -37,10 +41,10 @@ class MetricsProvider extends ChangeNotifier {
     final s = _snapshot!;
     final alertPenalty = criticalCount * 15.0 + warningCount * 5.0;
     return (100 -
-            (s.cpuPercent * 0.4 +
-             s.ramPercent * 0.3 +
+            (s.cpuPercent  * 0.4 +
+             s.ramPercent  * 0.3 +
              s.diskPercent * 0.2 +
-             alertPenalty * 0.1))
+             alertPenalty  * 0.1))
         .clamp(0.0, 100.0);
   }
 
@@ -48,8 +52,8 @@ class MetricsProvider extends ChangeNotifier {
     _ws.connect();
     _metricsSub = _ws.metricsStream.listen(_onMetrics);
     _stateSub   = _ws.connectionState.listen(_onWsState);
-    // Also poll as fallback
-    _pollTimer = Timer.periodic(
+    // HTTP poll as fallback
+    _pollTimer  = Timer.periodic(
       Duration(seconds: AppConstants.metricsRefreshSeconds),
       (_) => _pollMetrics(),
     );
@@ -65,10 +69,27 @@ class MetricsProvider extends ChangeNotifier {
 
   void _onMetrics(MetricsSnapshot m) {
     _snapshot = m;
+
+    // CPU history
     _rollingHistory.add(m.cpuPercent);
     if (_rollingHistory.length > AppConstants.historyMaxPoints) {
       _rollingHistory.removeAt(0);
     }
+
+    // Network history
+    if (m.networkInKbps != null) {
+      _networkInHistory.add(m.networkInKbps!);
+      if (_networkInHistory.length > AppConstants.historyMaxPoints) {
+        _networkInHistory.removeAt(0);
+      }
+    }
+    if (m.networkOutKbps != null) {
+      _networkOutHistory.add(m.networkOutKbps!);
+      if (_networkOutHistory.length > AppConstants.historyMaxPoints) {
+        _networkOutHistory.removeAt(0);
+      }
+    }
+
     notifyListeners();
   }
 
@@ -77,9 +98,7 @@ class MetricsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> fetchNow() async {
-    await _pollMetrics();
-  }
+  Future<void> fetchNow() async => _pollMetrics();
 
   @override
   void dispose() {

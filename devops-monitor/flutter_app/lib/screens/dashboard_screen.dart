@@ -8,6 +8,7 @@ import '../widgets/circular_gauge.dart';
 import '../widgets/sparkline_chart.dart';
 import '../widgets/health_score_widget.dart';
 import '../widgets/shimmer_loader.dart';
+import '../widgets/network_speed_card.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -25,9 +26,9 @@ class DashboardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer2<MetricsProvider, AlertsProvider>(
       builder: (_, metrics, alerts, __) {
-        final snap       = metrics.snapshot;
-        final wsState    = metrics.wsState;
-        final criticals  = alerts.allAlerts.where((a) => a.isCritical).toList();
+        final snap        = metrics.snapshot;
+        final wsState     = metrics.wsState;
+        final criticals   = alerts.allAlerts.where((a) => a.isCritical).toList();
         final healthScore = metrics.healthScoreWithAlerts(alerts.criticalCount, alerts.warningCount);
 
         return Scaffold(
@@ -77,29 +78,28 @@ class DashboardScreen extends StatelessWidget {
 
                       // Health score card
                       GestureDetector(
-                        onTap: () {
-                          showDialog(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              backgroundColor: AppTheme.bgCard,
-                              title: const Text('Health Score Calculation', style: TextStyle(color: AppTheme.textPrimary)),
-                              content: const Text(
-                                'The health score is calculated based on:\n'
-                                '• CPU usage (40%)\n'
-                                '• RAM usage (30%)\n'
-                                '• Disk usage (20%)\n'
-                                '• Active Alerts (10%)',
-                                style: TextStyle(color: AppTheme.textSecondary),
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  child: const Text('OK', style: TextStyle(color: AppTheme.green)),
-                                ),
-                              ],
+                        onTap: () => showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            backgroundColor: AppTheme.bgCard,
+                            title: const Text('Health Score Calculation',
+                                style: TextStyle(color: AppTheme.textPrimary)),
+                            content: const Text(
+                              'The health score is calculated based on:\n'
+                              '• CPU usage (40%)\n'
+                              '• RAM usage (30%)\n'
+                              '• Disk usage (20%)\n'
+                              '• Active Alerts (10%)',
+                              style: TextStyle(color: AppTheme.textSecondary),
                             ),
-                          );
-                        },
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('OK', style: TextStyle(color: AppTheme.green)),
+                              ),
+                            ],
+                          ),
+                        ),
                         child: Container(
                           margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                           padding: const EdgeInsets.all(16),
@@ -123,9 +123,9 @@ class DashboardScreen extends StatelessWidget {
                                 child: Column(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    _StatRow(label: 'CPU',  value: snap.cpuPercent, color: AppTheme.getMetricColor(snap.cpuPercent)),
+                                    _StatRow(label: 'CPU',  value: snap.cpuPercent,  color: AppTheme.getMetricColor(snap.cpuPercent)),
                                     const SizedBox(height: 6),
-                                    _StatRow(label: 'RAM',  value: snap.ramPercent, color: AppTheme.getMetricColor(snap.ramPercent)),
+                                    _StatRow(label: 'RAM',  value: snap.ramPercent,  color: AppTheme.getMetricColor(snap.ramPercent)),
                                     const SizedBox(height: 6),
                                     _StatRow(label: 'Disk', value: snap.diskPercent, color: AppTheme.getMetricColor(snap.diskPercent)),
                                   ],
@@ -135,29 +135,16 @@ class DashboardScreen extends StatelessWidget {
                           ),
                         ),
                       ),
-                      
-                      _Card(
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            Column(
-                              children: [
-                                const Text('↓ IN', style: TextStyle(color: AppTheme.textMuted, fontSize: 10)),
-                                Text('${snap.networkInKbps?.toStringAsFixed(1) ?? '0.0'} KB/s', style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
-                              ],
-                            ),
-                            Container(width: 1, height: 30, color: AppTheme.border),
-                            Column(
-                              children: [
-                                const Text('↑ OUT', style: TextStyle(color: AppTheme.textMuted, fontSize: 10)),
-                                Text('${snap.networkOutKbps?.toStringAsFixed(1) ?? '0.0'} KB/s', style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
-                              ],
-                            ),
-                          ],
-                        ),
+
+                      // ── Live network speed card ──────────────────────
+                      NetworkSpeedCard(
+                        inHistory:  metrics.networkInHistory,
+                        outHistory: metrics.networkOutHistory,
+                        currentIn:  snap.networkInKbps  ?? 0.0,
+                        currentOut: snap.networkOutKbps ?? 0.0,
                       ),
 
-                      // Gauges
+                      // ── Gauges ───────────────────────────────────────
                       _Card(
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -169,7 +156,7 @@ class DashboardScreen extends StatelessWidget {
                         ),
                       ),
 
-                      // Sparkline
+                      // ── CPU sparkline ────────────────────────────────
                       if (metrics.rollingHistory.isNotEmpty)
                         _Card(
                           child: Column(
@@ -185,7 +172,7 @@ class DashboardScreen extends StatelessWidget {
                           ),
                         ),
 
-                      // Uptime
+                      // ── Uptime / Source ──────────────────────────────
                       _Card(
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -196,7 +183,11 @@ class DashboardScreen extends StatelessWidget {
                                 const Text('Uptime', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
                                 Text(
                                   _formatUptime(snap.uptimeSeconds),
-                                  style: const TextStyle(color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
+                                  style: const TextStyle(
+                                    color: AppTheme.textPrimary,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ],
                             ),
@@ -206,7 +197,11 @@ class DashboardScreen extends StatelessWidget {
                                 const Text('Source', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
                                 Text(
                                   snap.source,
-                                  style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
+                                  style: const TextStyle(
+                                    color: AppTheme.textPrimary,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ],
                             ),
@@ -222,6 +217,8 @@ class DashboardScreen extends StatelessWidget {
   }
 }
 
+// ── Connection pill ───────────────────────────────────────────────────────────
+
 class _ConnectionPill extends StatelessWidget {
   final WsState state;
   const _ConnectionPill({required this.state});
@@ -229,7 +226,7 @@ class _ConnectionPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (color, text) = switch (state) {
-      WsState.connected    => (AppTheme.green, 'Connected'),
+      WsState.connected    => (AppTheme.green, 'Live'),
       WsState.connecting   => (AppTheme.amber, 'Connecting…'),
       WsState.disconnected => (AppTheme.red,   'Offline'),
     };
@@ -252,6 +249,8 @@ class _ConnectionPill extends StatelessWidget {
     );
   }
 }
+
+// ── Offline / Critical banners ────────────────────────────────────────────────
 
 class _OfflineBanner extends StatelessWidget {
   final dynamic snap;
@@ -301,7 +300,7 @@ class _CriticalBanner extends StatelessWidget {
           ),
         ),
         TextButton(
-          onPressed: () => DefaultTabController.of(context),
+          onPressed: () {},
           style: TextButton.styleFrom(
             foregroundColor: AppTheme.red,
             padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -313,6 +312,8 @@ class _CriticalBanner extends StatelessWidget {
     ),
   );
 }
+
+// ── Card container ────────────────────────────────────────────────────────────
 
 class _Card extends StatelessWidget {
   final Widget child;
@@ -329,6 +330,8 @@ class _Card extends StatelessWidget {
     child: child,
   );
 }
+
+// ── Stat row ──────────────────────────────────────────────────────────────────
 
 class _StatRow extends StatelessWidget {
   final String label;

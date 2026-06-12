@@ -7,6 +7,8 @@ import 'screens/servers_screen.dart';
 import 'screens/alerts_screen.dart';
 import 'screens/ai_predict_screen.dart';
 import 'screens/settings_screen.dart';
+import 'services/notification_service.dart';
+import 'widgets/critical_alert_banner.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -17,133 +19,170 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int _tab = 0;
+  final _bannerController = CriticalAlertBannerController();
+
+  @override
+  void initState() {
+    super.initState();
+    // Wire the banner into the notification service so it fires in-app
+    NotificationService().onCriticalAlert = (alert) {
+      _bannerController.show(alert);
+    };
+  }
+
+  @override
+  void dispose() {
+    NotificationService().onCriticalAlert = null;
+    super.dispose();
+  }
 
   void _onTabTapped(int i) => setState(() => _tab = i);
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<AlertsProvider>(
-      builder: (_, alerts, __) {
-        return Scaffold(
-          body: IndexedStack(
-            index: _tab,
-            children: const [
-              DashboardScreen(),
-              ServersScreen(),
-              AlertsScreen(),
-              AiPredictScreen(),
-            ],
-          ),
-          bottomNavigationBar: BottomNavigationBar(
-            currentIndex: _tab,
-            onTap: _onTabTapped,
-            items: [
-              const BottomNavigationBarItem(
-                icon: Icon(Icons.grid_view_rounded),
-                label: 'Dashboard',
-              ),
-              const BottomNavigationBarItem(
-                icon: Icon(Icons.dns_outlined),
-                label: 'Servers',
-              ),
-            BottomNavigationBarItem(
-              icon: Consumer<AlertsProvider>(
-                builder: (_, alerts, __) {
-                  final count = alerts.activeCount;
-                  return Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      const Icon(Icons.notifications_outlined),
-                      if (count > 0)
-                        Positioned(
-                          right: -4,
-                          top: -4,
-                          child: Container(
-                            padding: const EdgeInsets.all(2),
-                            decoration: const BoxDecoration(
-                              color: AppTheme.red,
-                              shape: BoxShape.circle,
-                            ),
-                            constraints: const BoxConstraints(
-                              minWidth: 14,
-                              minHeight: 14,
-                            ),
-                            child: Text(
-                              count > 9 ? '9+' : '$count',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 8,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ),
-                    ],
-                  );
-                },
-              ),
-              label: 'Alerts',
+    return CriticalAlertBanner(
+      controller: _bannerController,
+      child: Consumer<AlertsProvider>(
+        builder: (_, alerts, __) {
+          return Scaffold(
+            body: IndexedStack(
+              index: _tab,
+              children: const [
+                DashboardScreen(),
+                ServersScreen(),
+                AlertsScreen(),
+                AiPredictScreen(),
+              ],
             ),
-              const BottomNavigationBarItem(
-                icon: Icon(Icons.auto_awesome_outlined),
-                label: 'Predict',
-              ),
-            ],
-          ),
-          drawer: Drawer(
-            backgroundColor: AppTheme.bgCard,
-            child: Column(
-              children: [
-                DrawerHeader(
-                  decoration: const BoxDecoration(
-                    color: AppTheme.bgPrimary,
-                    border: Border(bottom: BorderSide(color: AppTheme.border)),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: AppTheme.green.withValues(alpha: 0.15),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.monitor_heart_outlined, color: AppTheme.green, size: 28),
-                      ),
-                      const SizedBox(width: 14),
-                      const Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
+            bottomNavigationBar: BottomNavigationBar(
+              currentIndex: _tab,
+              onTap: _onTabTapped,
+              items: [
+                const BottomNavigationBarItem(
+                  icon: Icon(Icons.grid_view_rounded),
+                  label: 'Dashboard',
+                ),
+                const BottomNavigationBarItem(
+                  icon: Icon(Icons.dns_outlined),
+                  label: 'Servers',
+                ),
+                BottomNavigationBarItem(
+                  icon: Consumer<AlertsProvider>(
+                    builder: (_, alerts, __) {
+                      final count = alerts.activeCount;
+                      return Stack(
+                        clipBehavior: Clip.none,
                         children: [
-                          Text('InfraLens',
-                              style: TextStyle(color: AppTheme.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
-                          Text('DevOps Dashboard',
-                              style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+                          const Icon(Icons.notifications_outlined),
+                          if (count > 0)
+                            Positioned(
+                              right: -4,
+                              top: -4,
+                              child: Container(
+                                padding: const EdgeInsets.all(2),
+                                decoration: const BoxDecoration(
+                                  color: AppTheme.red,
+                                  shape: BoxShape.circle,
+                                ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 14,
+                                  minHeight: 14,
+                                ),
+                                child: Text(
+                                  count > 9 ? '9+' : '$count',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ),
                         ],
-                      ),
-                    ],
+                      );
+                    },
                   ),
+                  label: 'Alerts',
                 ),
-                ListTile(
-                  leading: const Icon(Icons.settings_outlined, color: AppTheme.textMuted),
-                  title: const Text('Settings', style: TextStyle(color: AppTheme.textPrimary)),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
-                  },
-                ),
-                const Spacer(),
-                const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text('InfraLens v1.0.0',
-                      style: TextStyle(color: AppTheme.textHint, fontSize: 12)),
+                const BottomNavigationBarItem(
+                  icon: Icon(Icons.auto_awesome_outlined),
+                  label: 'Predict',
                 ),
               ],
             ),
-          ),
-        );
-      },
+            drawer: Drawer(
+              backgroundColor: AppTheme.bgCard,
+              child: Column(
+                children: [
+                  DrawerHeader(
+                    decoration: const BoxDecoration(
+                      color: AppTheme.bgPrimary,
+                      border: Border(bottom: BorderSide(color: AppTheme.border)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: AppTheme.green.withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.monitor_heart_outlined, color: AppTheme.green, size: 28),
+                        ),
+                        const SizedBox(width: 14),
+                        const Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('InfraLens',
+                                style: TextStyle(color: AppTheme.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
+                            Text('DevOps Dashboard',
+                                style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.settings_outlined, color: AppTheme.textMuted),
+                    title: const Text('Settings', style: TextStyle(color: AppTheme.textPrimary)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
+                    },
+                  ),
+                  // Notification permission tile
+                  ListTile(
+                    leading: const Icon(Icons.notifications_active_outlined, color: AppTheme.blue),
+                    title: const Text('Enable Notifications', style: TextStyle(color: AppTheme.textPrimary)),
+                    subtitle: const Text('Allow browser alerts for critical events', style: TextStyle(color: AppTheme.textMuted, fontSize: 11)),
+                    onTap: () async {
+                      Navigator.pop(context);
+                      await NotificationService().requestPermission();
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Notification permission requested — check your browser prompt'),
+                            backgroundColor: AppTheme.bgCardAlt,
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                  const Spacer(),
+                  const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('InfraLens v1.0.0',
+                        style: TextStyle(color: AppTheme.textHint, fontSize: 12)),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }
