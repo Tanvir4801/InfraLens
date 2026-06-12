@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../constants/app_constants.dart';
 import '../models/metrics_snapshot.dart';
@@ -29,7 +28,7 @@ class ApiService {
         await LocalStorageService.saveMetrics(m);
         return m;
       }
-      throw HttpException('Status ${r.statusCode}');
+      throw Exception('Status ${r.statusCode}');
     } catch (_) {
       return LocalStorageService.loadMetrics() ?? MockDataService.fetchMetrics();
     }
@@ -43,7 +42,7 @@ class ApiService {
         final list = jsonDecode(r.body) as List<dynamic>;
         return list.map((e) => ServerInfo.fromJson(e as Map<String, dynamic>)).toList();
       }
-      throw HttpException('Status ${r.statusCode}');
+      throw Exception('Status ${r.statusCode}');
     } catch (_) {
       return MockDataService.fetchServers();
     }
@@ -54,7 +53,7 @@ class ApiService {
     try {
       final r = await http.get(Uri.parse('$_base/api/alerts')).timeout(_timeout);
       if (r.statusCode == 200) {
-        final data  = jsonDecode(r.body) as Map<String, dynamic>;
+        final data   = jsonDecode(r.body) as Map<String, dynamic>;
         final alerts = data['alerts'] as List<dynamic>? ?? [];
         final result = alerts
             .map((e) => AlertModel.fromJson(e as Map<String, dynamic>))
@@ -62,7 +61,7 @@ class ApiService {
         await LocalStorageService.saveAlerts(result);
         return result;
       }
-      throw HttpException('Status ${r.statusCode}');
+      throw Exception('Status ${r.statusCode}');
     } catch (_) {
       return LocalStorageService.loadAlerts();
     }
@@ -75,7 +74,7 @@ class ApiService {
       if (r.statusCode == 200) {
         return PredictionResult.fromJson(jsonDecode(r.body) as Map<String, dynamic>);
       }
-      throw HttpException('Status ${r.statusCode}');
+      throw Exception('Status ${r.statusCode}');
     } catch (_) {
       return MockDataService.fetchPrediction();
     }
@@ -91,7 +90,7 @@ class ApiService {
                 ?.map((e) => Map<String, dynamic>.from(e as Map))
                 .toList() ?? [];
       }
-      throw HttpException('Status ${r.statusCode}');
+      throw Exception('Status ${r.statusCode}');
     } catch (_) {
       return MockDataService.fetchServerHistory(name);
     }
@@ -121,7 +120,7 @@ class ApiService {
         final text = data['report'] as String? ?? r.body;
         return IncidentReport.fromText(text);
       }
-      throw HttpException('Status ${r.statusCode}');
+      throw Exception('Status ${r.statusCode}');
     } catch (_) {
       return MockDataService.postIncidentReport(alert);
     }
@@ -129,19 +128,19 @@ class ApiService {
 
   Future<String> postAiChat(
     String question, {
-    double cpu = 0,
-    double ram = 0,
-    double disk = 0,
-    int uptime = 0,
+    double cpu    = 0,
+    double ram    = 0,
+    double disk   = 0,
+    int    uptime = 0,
     List<String> alerts = const [],
   }) async {
     if (_mock) return MockDataService.postAiChat(question);
     try {
       final uri = Uri.parse('$_base/api/chat').replace(queryParameters: {
-        'q': question,
-        'cpu':  cpu.toStringAsFixed(1),
-        'ram':  ram.toStringAsFixed(1),
-        'disk': disk.toStringAsFixed(1),
+        'q':      question,
+        'cpu':    cpu.toStringAsFixed(1),
+        'ram':    ram.toStringAsFixed(1),
+        'disk':   disk.toStringAsFixed(1),
         'uptime': uptime.toString(),
         'alerts': alerts.join(','),
       });
@@ -160,6 +159,15 @@ class ApiService {
     if (_mock) return;
     try {
       await http.patch(Uri.parse('$_base/api/alerts/$id/acknowledge')).timeout(_timeout);
+    } catch (_) {}
+  }
+
+  Future<void> restartContainer(String name) async {
+    if (_mock) return;
+    try {
+      await http.post(
+        Uri.parse('$_base/api/containers/$name/restart'),
+      ).timeout(_timeout);
     } catch (_) {}
   }
 }

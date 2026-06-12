@@ -21,9 +21,12 @@ class WebSocketService {
   WsState _currentState = WsState.disconnected;
   WsState get state     => _currentState;
 
-  bool  _disposed = false;
-  int   _retryCount = 0;
+  bool   _disposed    = false;
+  int    _retryCount  = 0;
   Timer? _retryTimer;
+
+  // Exponential backoff: 1s → 2s → 4s → 8s → 16s → 30s (capped)
+  static const _backoff = [1, 2, 4, 8, 16, 30];
 
   void connect() {
     if (_disposed) return;
@@ -34,9 +37,11 @@ class WebSocketService {
       _channel!.stream.listen(
         _onData,
         onError: (e) {
+          _setState(WsState.disconnected);
           _scheduleReconnect();
         },
         onDone: () {
+          _setState(WsState.disconnected);
           _scheduleReconnect();
         },
         cancelOnError: false,
@@ -44,24 +49,26 @@ class WebSocketService {
       _setState(WsState.connected);
       _retryCount = 0;
     } catch (_) {
+      _setState(WsState.disconnected);
       _scheduleReconnect();
     }
   }
 
   void _onData(dynamic data) {
     _setState(WsState.connected);
+    _retryCount = 0;
     try {
       final json = jsonDecode(data as String) as Map<String, dynamic>;
-      _metricsCtrl.add(MetricsSnapshot.fromJson(json));
+      if (!_metricsCtrl.isClosed) {
+        _metricsCtrl.add(MetricsSnapshot.fromJson(json));
+      }
     } catch (_) {}
   }
 
   void _scheduleReconnect() {
     if (_disposed) return;
-    _setState(WsState.disconnected);
     _channel = null;
-    final delays = [1, 2, 4, 8, 16, 30];
-    final delay  = delays[_retryCount.clamp(0, delays.length - 1)];
+    final delay = _backoff[_retryCount.clamp(0, _backoff.length - 1)];
     _retryCount++;
     _retryTimer?.cancel();
     _retryTimer = Timer(Duration(seconds: delay), () {

@@ -1,8 +1,8 @@
-import 'package:flutter/services.dart';
 import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import '../constants/app_constants.dart';
-import 'package:flutter/material.dart';
 import '../constants/app_theme.dart';
 import '../models/server_info.dart';
 import 'pulse_dot.dart';
@@ -13,17 +13,16 @@ class ServerCard extends StatelessWidget {
 
   const ServerCard({super.key, required this.server, required this.onTap});
 
+  /// Dot color driven by server STATUS field — not CPU
   Color _dotColor(String status) {
     switch (status.toLowerCase()) {
-      case 'down':
-        return AppTheme.red;
-      case 'warning':
-        return AppTheme.amber;
-      default:
-        return AppTheme.green;
+      case 'down':    return AppTheme.red;
+      case 'warning': return AppTheme.amber;
+      default:        return AppTheme.green;
     }
   }
 
+  /// Bar/text color driven by CPU percentage
   Color _barColor(double cpu) {
     if (cpu >= 80) return AppTheme.red;
     if (cpu >= 60) return AppTheme.amber;
@@ -31,9 +30,7 @@ class ServerCard extends StatelessWidget {
   }
 
   void _showActions(BuildContext context) {
-    try {
-      HapticFeedback.mediumImpact();
-    } catch (_) {}
+    try { HapticFeedback.mediumImpact(); } catch (_) {}
     showModalBottomSheet(
       context: context,
       backgroundColor: AppTheme.bgCard,
@@ -47,6 +44,8 @@ class ServerCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cpuColor = _barColor(server.cpu);
+    final dotColor = _dotColor(server.status);
+
     return GestureDetector(
       onTap: onTap,
       onLongPress: () => _showActions(context),
@@ -62,7 +61,7 @@ class ServerCard extends StatelessWidget {
           children: [
             Hero(
               tag: 'server-dot-${server.name}',
-              child: PulseDot(healthy: server.isHealthy, color: _dotColor(server.status)),
+              child: PulseDot(healthy: server.isHealthy, color: dotColor),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -121,6 +120,8 @@ class ServerCard extends StatelessWidget {
   }
 }
 
+// ── Server long-press action sheet ───────────────────────────────────────────
+
 class _ServerActionsSheet extends StatefulWidget {
   final ServerInfo server;
   const _ServerActionsSheet({required this.server});
@@ -135,26 +136,23 @@ class _ServerActionsSheetState extends State<_ServerActionsSheet> {
   Future<void> _restart() async {
     setState(() => _loading = true);
     try {
-      // In a real app, this would be server.id or server.name
-      // Assuming T001 added POST /api/containers/{id}/restart
       final r = await http.post(
         Uri.parse('${AppConstants.backendBaseUrl}/api/containers/${widget.server.name}/restart'),
       ).timeout(const Duration(seconds: 10));
-      
       if (!mounted) return;
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(r.statusCode == 200 ? 'Restart initiated for ${widget.server.name}' : 'Failed to restart: ${r.statusCode}'),
-          backgroundColor: r.statusCode == 200 ? AppTheme.green : AppTheme.red,
-        ),
-      );
+      final ok = r.statusCode == 200;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(ok ? 'Container restarted ✓' : 'Failed: ${r.statusCode}'),
+        backgroundColor: ok ? AppTheme.green : AppTheme.red,
+      ));
     } catch (e) {
       if (!mounted) return;
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: AppTheme.red),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Failed: $e'),
+        backgroundColor: AppTheme.red,
+      ));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -169,14 +167,14 @@ class _ServerActionsSheetState extends State<_ServerActionsSheet> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (context) => DraggableScrollableSheet(
+      builder: (ctx) => DraggableScrollableSheet(
         initialChildSize: 0.7,
         maxChildSize: 0.9,
         minChildSize: 0.4,
         expand: false,
-        builder: (_, scrollController) => _LogsView(
+        builder: (_, scrollCtrl) => _LogsView(
           serverName: widget.server.name,
-          scrollController: scrollController,
+          scrollController: scrollCtrl,
         ),
       ),
     );
@@ -189,9 +187,40 @@ class _ServerActionsSheetState extends State<_ServerActionsSheet> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Handle
+          Container(
+            width: 40, height: 4,
+            decoration: BoxDecoration(color: AppTheme.border, borderRadius: BorderRadius.circular(2)),
+          ),
+          const SizedBox(height: 14),
           Text(
             'Actions — ${widget.server.name}',
             style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          // Status badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+            decoration: BoxDecoration(
+              color: (widget.server.status.toLowerCase() == 'healthy'
+                  ? AppTheme.green
+                  : widget.server.status.toLowerCase() == 'warning'
+                      ? AppTheme.amber
+                      : AppTheme.red).withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              widget.server.status.toUpperCase(),
+              style: TextStyle(
+                color: widget.server.status.toLowerCase() == 'healthy'
+                    ? AppTheme.green
+                    : widget.server.status.toLowerCase() == 'warning'
+                        ? AppTheme.amber
+                        : AppTheme.red,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
           const SizedBox(height: 16),
           if (_loading)
@@ -203,11 +232,13 @@ class _ServerActionsSheetState extends State<_ServerActionsSheet> {
             ListTile(
               leading: const Icon(Icons.refresh, color: AppTheme.amber),
               title: const Text('Restart Container', style: TextStyle(color: AppTheme.textPrimary)),
+              subtitle: const Text('Sends restart signal to the container', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
               onTap: _restart,
             ),
             ListTile(
               leading: const Icon(Icons.article_outlined, color: AppTheme.blue),
               title: const Text('View Logs', style: TextStyle(color: AppTheme.textPrimary)),
+              subtitle: const Text('Last 50 log entries from this container', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
               onTap: _viewLogs,
             ),
             ListTile(
@@ -222,6 +253,8 @@ class _ServerActionsSheetState extends State<_ServerActionsSheet> {
   }
 }
 
+// ── Log viewer ────────────────────────────────────────────────────────────────
+
 class _LogsView extends StatefulWidget {
   final String serverName;
   final ScrollController scrollController;
@@ -233,7 +266,7 @@ class _LogsView extends StatefulWidget {
 
 class _LogsViewState extends State<_LogsView> {
   List<String> _logs = [];
-  bool _loading = true;
+  bool   _loading = true;
   String? _error;
 
   @override
@@ -247,36 +280,52 @@ class _LogsViewState extends State<_LogsView> {
       final r = await http.get(
         Uri.parse('${AppConstants.backendBaseUrl}/api/containers/${widget.serverName}/logs'),
       ).timeout(const Duration(seconds: 10));
-      
       if (r.statusCode == 200) {
         final data = jsonDecode(r.body);
         setState(() {
-          _logs = List<String>.from(data is List ? data : (data['logs'] ?? []));
+          _logs = List<String>.from(data is List ? data : (data['logs'] as List? ?? []));
           _loading = false;
         });
       } else {
-        setState(() {
-          _error = 'Failed to load logs: ${r.statusCode}';
-          _loading = false;
-        });
+        setState(() { _error = 'Failed to load logs: ${r.statusCode}'; _loading = false; });
       }
     } catch (e) {
-      setState(() {
-        _error = 'Error: $e';
-        _loading = false;
-      });
+      setState(() { _error = 'Error: $e'; _loading = false; });
     }
+  }
+
+  Color _logColor(String line) {
+    final l = line.toUpperCase();
+    if (l.contains('ERROR') || l.contains('FATAL')) return AppTheme.red;
+    if (l.contains('WARN'))  return AppTheme.amber;
+    if (l.contains('DEBUG')) return AppTheme.textMuted;
+    return AppTheme.textPrimary;
   }
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
+        // Handle
+        Container(
+          margin: const EdgeInsets.only(top: 10, bottom: 4),
+          width: 40, height: 4,
+          decoration: BoxDecoration(color: AppTheme.border, borderRadius: BorderRadius.circular(2)),
+        ),
         Padding(
           padding: const EdgeInsets.all(16),
-          child: Text(
-            'Logs — ${widget.serverName}',
-            style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
+          child: Row(
+            children: [
+              const Icon(Icons.terminal, color: AppTheme.green, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                'Logs — ${widget.serverName}',
+                style: const TextStyle(color: AppTheme.textPrimary, fontSize: 15, fontWeight: FontWeight.bold),
+              ),
+              const Spacer(),
+              if (!_loading && _error == null)
+                Text('${_logs.length} lines', style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+            ],
           ),
         ),
         const Divider(color: AppTheme.border),
@@ -289,10 +338,21 @@ class _LogsViewState extends State<_LogsView> {
                       controller: widget.scrollController,
                       padding: const EdgeInsets.all(16),
                       itemCount: _logs.length,
-                      itemBuilder: (_, i) => Text(
-                        _logs[i],
-                        style: const TextStyle(color: AppTheme.textPrimary, fontFamily: 'monospace', fontSize: 12),
-                      ),
+                      itemBuilder: (_, i) {
+                        final line = _logs[i];
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 3),
+                          child: Text(
+                            line,
+                            style: TextStyle(
+                              color: _logColor(line),
+                              fontFamily: 'monospace',
+                              fontSize: 11,
+                              height: 1.4,
+                            ),
+                          ),
+                        );
+                      },
                     ),
         ),
       ],
