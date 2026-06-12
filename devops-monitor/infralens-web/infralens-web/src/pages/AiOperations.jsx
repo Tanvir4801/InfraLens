@@ -31,9 +31,8 @@ export default function AiOperations() {
   const [input,    setInput]    = useState('');
   const [loading,  setLoading]  = useState(false);
   const [alerts,   setAlerts]   = useState([]);
-  const [rcaList,  setRcaList]  = useState([]);
+  const [rcaList]               = useState([]);
   const [tab,      setTab]      = useState('chat');
-  const [typing,   setTyping]   = useState(false);
   const bottomRef = useRef(null);
 
   useEffect(() => { fetchAlerts().then(d=>setAlerts(Array.isArray(d)?d:d?.alerts??[])).catch(()=>{}); }, []);

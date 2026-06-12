@@ -50,6 +50,8 @@ export const fetchSessions      = () => api.get('/api/sessions').then(r => r.dat
 
 // Auth
 export const login              = (username, password) => api.post('/api/auth/login', { username, password }).then(r => r.data);
+export const logout             = () => api.post('/api/auth/logout').then(r => r.data);
 export const fetchCurrentUser   = () => api.get('/api/auth/me').then(r => r.data);
+export const changePassword     = (old_password, new_password) => api.post('/api/auth/change-password', { old_password, new_password }).then(r => r.data);
 
 export default api;

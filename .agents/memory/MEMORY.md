@@ -4,3 +4,4 @@
 - [Flutter web URL strategy](flutter-web-urls.md) — use Uri.base.host + kIsWeb to derive backend URL dynamically; never import dart:html (triggers avoid_web_libraries_in_flutter warning).
 - [React CRA proxy + WS](react-cra-proxy.md) — package.json "proxy": "http://localhost:8000" handles /api/*; WS URL must be constructed from window.location.host with port derivation; eslint-disable-line for connect dep in useEffect.
 - [SSE implementation](sse-impl.md) — FastAPI SSE needs X-Accel-Buffering:no + Cache-Control:no-cache headers; Flutter SSE via http.Client.send() + LineSplitter; React via native EventSource('/api/events') using CRA proxy.
+- [InfraLens PostgreSQL auth](infralens-auth.md) — bcrypt+psycopg2 in db.py; tables: infralens_users, infralens_sessions, infralens_audit_log; tokens prefixed "ilens-"; Header(default="") pattern for optional auth in FastAPI.

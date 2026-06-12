@@ -11,13 +11,15 @@ import httpx
 import json
 import psutil
 from dotenv import load_dotenv
-from fastapi import Body, FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
+from fastapi import Body, FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import uuid
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, generate_latest
 from starlette.responses import Response
+
+import db as database
 
 from ai_service import ai_chat_response, generate_incident_report as ai_incident_report
 from predictor import generate_prediction
@@ -511,6 +513,11 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+
+
 @app.get("/api/containers/{id}/logs")
 async def api_container_logs(id: str) -> list[str]:
     request_counter.labels(path="/api/containers/{id}/logs", method="GET").inc()
@@ -616,19 +623,53 @@ async def api_cost_analysis() -> list[dict[str, Any]]:
 
 
 @app.post("/api/auth/login")
-async def api_login(req: LoginRequest) -> dict[str, str]:
+async def api_login(req: LoginRequest, request: Request) -> dict[str, str]:
     request_counter.labels(path="/api/auth/login", method="POST").inc()
-    role = "viewer"
-    if "admin" in req.username.lower():
-        role = "admin"
-    elif "operator" in req.username.lower():
-        role = "operator"
-    
+    user = database.get_user_by_username(req.username)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    # Get hash for verification
+    rows = database.query(
+        "SELECT password_hash FROM infralens_users WHERE username = %s", (req.username,)
+    )
+    if not rows or not database.verify_password(req.password, rows[0]["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if user.get("status") == "inactive":
+        raise HTTPException(status_code=403, detail="Account disabled")
+    token = "ilens-" + str(uuid.uuid4())
+    ip = request.client.host if request.client else "unknown"
+    database.update_last_login(user["id"])
+    database.save_session(user["id"], token, ip)
+    database.add_audit(user["username"], "login", "/api/auth/login", ip)
     return {
-        "access_token": "demo-jwt-token-" + str(uuid.uuid4()),
-        "role": role,
-        "username": req.username
+        "access_token": token,
+        "role": user["role"],
+        "username": user["username"],
+        "email": user.get("email", ""),
     }
+
+
+@app.post("/api/auth/logout")
+async def api_logout(authorization: str = Header(default="")) -> dict[str, bool]:
+    token = authorization.replace("Bearer ", "").strip()
+    if token:
+        database.delete_session(token)
+    return {"success": True}
+
+
+@app.post("/api/auth/change-password")
+async def api_change_password(req: ChangePasswordRequest, authorization: str = Header(default="")) -> dict[str, bool]:
+    token = authorization.replace("Bearer ", "").strip()
+    user = database.get_session_user(token) if token else None
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if len(req.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    ok = database.change_password(user["id"], req.old_password, req.new_password)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    database.add_audit(user["username"], "change_password", "/api/auth/change-password")
+    return {"success": True}
 
 
 @app.patch("/api/alerts/{id}/acknowledge")
@@ -656,56 +697,62 @@ async def api_assign_alert(id: str, payload: dict[str, Any] = Body(...)) -> dict
 @app.get("/api/users")
 async def api_get_users() -> list[dict[str, Any]]:
     request_counter.labels(path="/api/users", method="GET").inc()
-    return _users
+    rows = database.get_all_users()
+    # Serialize datetime objects
+    for r in rows:
+        if r.get("last_login") and hasattr(r["last_login"], "isoformat"):
+            r["last_login"] = r["last_login"].isoformat()
+    return rows
 
 
 @app.post("/api/users")
 async def api_create_user(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
     request_counter.labels(path="/api/users", method="POST").inc()
-    user = {
-        "id": f"u{len(_users)+1}",
-        "username":   payload.get("username", ""),
-        "email":      payload.get("email", ""),
-        "role":       payload.get("role", "viewer"),
-        "department": payload.get("department", ""),
-        "status":     "active",
-        "last_login": datetime.now(timezone.utc).isoformat(),
-        "online":     False,
-    }
-    _users.append(user)
-    _add_audit("admin", "create_user", "/api/users")
-    return user
+    try:
+        user = database.create_user(
+            username=payload.get("username", ""),
+            email=payload.get("email", ""),
+            role=payload.get("role", "viewer"),
+            department=payload.get("department", "General"),
+            password=payload.get("password", "changeme123"),
+        )
+        database.add_audit("admin", "create_user", "/api/users")
+        if user.get("last_login") and hasattr(user["last_login"], "isoformat"):
+            user["last_login"] = user["last_login"].isoformat()
+        return user
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.patch("/api/users/{id}")
 async def api_update_user(id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
-    for u in _users:
-        if u["id"] == id:
-            u.update({k: v for k, v in payload.items() if k not in ("id", "password")})
-            _add_audit("admin", "update_user", f"/api/users/{id}")
-            return u
-    raise HTTPException(status_code=404, detail="User not found")
+    user = database.update_user(id, payload)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    database.add_audit("admin", "update_user", f"/api/users/{id}")
+    if user.get("last_login") and hasattr(user["last_login"], "isoformat"):
+        user["last_login"] = user["last_login"].isoformat()
+    return user
 
 
 @app.delete("/api/users/{id}")
 async def api_delete_user(id: str) -> dict[str, bool]:
-    global _users
-    before = len(_users)
-    _users = [u for u in _users if u["id"] != id]
-    if len(_users) == before:
+    ok = database.delete_user(id)
+    if not ok:
         raise HTTPException(status_code=404, detail="User not found")
-    _add_audit("admin", "delete_user", f"/api/users/{id}")
+    database.add_audit("admin", "delete_user", f"/api/users/{id}")
     return {"success": True}
 
 
 @app.patch("/api/users/{id}/toggle")
 async def api_toggle_user(id: str) -> dict[str, Any]:
-    for u in _users:
-        if u["id"] == id:
-            u["status"] = "inactive" if u["status"] == "active" else "active"
-            _add_audit("admin", "toggle_user", f"/api/users/{id}/toggle")
-            return u
-    raise HTTPException(status_code=404, detail="User not found")
+    user = database.toggle_user_status(id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    database.add_audit("admin", "toggle_user_status", f"/api/users/{id}/toggle")
+    if user.get("last_login") and hasattr(user["last_login"], "isoformat"):
+        user["last_login"] = user["last_login"].isoformat()
+    return user
 
 
 # ── Audit / Sessions / Containers ────────────────────────────────────────────
@@ -713,12 +760,21 @@ async def api_toggle_user(id: str) -> dict[str, Any]:
 @app.get("/api/audit-logs")
 async def api_audit_logs() -> list[dict[str, Any]]:
     request_counter.labels(path="/api/audit-logs", method="GET").inc()
-    return list(reversed(_audit_log))
+    rows = database.get_audit_logs(200)
+    for r in rows:
+        if r.get("timestamp") and hasattr(r["timestamp"], "isoformat"):
+            r["timestamp"] = r["timestamp"].isoformat()
+    return rows
 
 
 @app.get("/api/sessions")
 async def api_sessions() -> list[dict[str, Any]]:
-    return _sessions
+    rows = database.get_active_sessions()
+    for r in rows:
+        for k in ("login", "last_active"):
+            if r.get(k) and hasattr(r[k], "isoformat"):
+                r[k] = r[k].isoformat()
+    return rows
 
 
 @app.get("/api/containers")
@@ -733,8 +789,13 @@ async def api_container_stop(id: str) -> dict[str, Any]:
 
 
 @app.get("/api/auth/me")
-async def api_auth_me() -> dict[str, Any]:
-    return {"username": "admin", "role": "admin", "email": "admin@infralens.io"}
+async def api_auth_me(authorization: str = Header(default="")) -> dict[str, Any]:
+    token = authorization.replace("Bearer ", "").strip()
+    if token:
+        user = database.get_session_user(token)
+        if user:
+            return {"username": user["username"], "role": user["role"], "email": user.get("email", "")}
+    raise HTTPException(status_code=401, detail="Not authenticated")
 
 
 @app.websocket("/ws/live")
